@@ -1,0 +1,14 @@
+{
+  "name": "my-ip-to-firewall",
+  "version": "1.0.0",
+  "main": "myIPToFirewall.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@google-cloud/compute": "^5.2.0",
+    "@google-cloud/storage": "^7.16.0",
+    "axios": "^1.10.0"
+  }
+}
