@@ -1,7 +1,43 @@
-const GCPUtils = require('./GCPUtils');
-
+const inquirer = require("inquirer");
+const GCPUtils = require("./GCPUtils");
+const { listConfigurations } = require("./utils/configLoader.js");
+//
+/**
+ * Shows configuration selection menu.
+ * @returns {Promise<string>} Selected configuration name.
+ */
+async function selectConfiguration() {
+  const configs = await listConfigurations();
+  //
+  if (configs.length === 0) {
+    throw new Error("No configuration found in Configurations/.");
+  }
+  //
+  const choices = configs.map((cfg, i) => ({
+    name: `${i + 1}. ${cfg}`,
+    value: cfg
+  }));
+  //
+  const { selected } = await inquirer.prompt([{
+    type: "list",
+    name: "selected",
+    message: "Select configuration:",
+    choices
+  }]);
+  //
+  return selected;
+}
+//
 (async () => {
-  const configName = process.argv[2];
+  let configName = process.argv[2];
+  //
+  // If no argument provided, show interactive menu.
+  if (!configName) {
+    console.log("=== Update Firewall ===\n");
+    configName = await selectConfiguration();
+    console.log();
+  }
+  //
   const networkManager = new GCPUtils.Network(configName);
   await networkManager.updateFirewall();
 })();
