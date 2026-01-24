@@ -1,24 +1,33 @@
 #!/usr/bin/env node
+const fs = require("fs/promises");
 const inquirer = require("inquirer");
 const chalk = require("chalk");
+const { isLocalMode, getConfigurationsDir } = require("./utils/paths.js");
 const { listConfigurations } = require("./utils/configLoader.js");
 const commands = require("./commands/index.js");
+const ListWithEscapePrompt = require("./utils/prompts/listWithEscape.js");
+//
+// Register custom prompt with ESC support.
+inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
 //
 /**
  * Shows the main menu to select a command.
  * @returns {Promise<string>} Selected command name.
  */
 async function showMainMenu() {
-  const choices = commands.map((cmd, i) => ({
+  // Filter out init command from numbered list.
+  const regularCommands = commands.filter(cmd => cmd.name !== "init");
+  const choices = regularCommands.map((cmd, i) => ({
     name: `${i + 1}. ${cmd.description}`,
     value: cmd.name
   }));
-  choices.push({ name: `${choices.length + 1}. Exit`, value: "exit" });
+  // Add init option with "." prefix.
+  choices.push({ name: ".. Initialize repository", value: "init" });
   //
   const { selected } = await inquirer.prompt([{
-    type: "list",
+    type: "listWithEscape",
     name: "selected",
-    message: "Select command:",
+    message: "Select command (ESC to exit):",
     choices
   }]);
   //
@@ -33,8 +42,8 @@ async function showConfigMenu() {
   const configs = await listConfigurations();
   //
   if (configs.length === 0) {
-    console.error("No configuration found in Configurations/.");
-    process.exit(1);
+    console.error(`No configuration found in ${getConfigurationsDir()}/.`);
+    return null;
   }
   //
   const choices = configs.map((cfg, i) => ({
@@ -43,9 +52,9 @@ async function showConfigMenu() {
   }));
   //
   const { selected } = await inquirer.prompt([{
-    type: "list",
+    type: "listWithEscape",
     name: "selected",
-    message: "Select configuration:",
+    message: "Select configuration (ESC to go back):",
     choices
   }]);
   //
@@ -53,77 +62,115 @@ async function showConfigMenu() {
 }
 //
 /**
- * Main entry point.
- *  
-  █   █  
-   █ █   
-  █████  
- ██ █ ██ 
-█████████
-█ █████ █
-█ █████ █
-   █ █   
-  ██ ██  
- ██████  ███████  ██████  ██████     ██    ██████   ██████    ██████ 
-██    ██ ██    ██   ██   ██    ██   ████   ██    ██ ██    ██ ██    ██
-██    ██ ██    ██   ██   ██        ██  ██  ██    ██ ██    ██ ██      
- ██████  ███████    ██    ██████  ██    ██ ██████   ██████    ██████ 
-██    ██ █     ██   ██         ██ ████████ ██       ██             ██
-██    ██ ██    ██   ██   ██    ██ ██    ██ ██       ██       ██    ██
- ██████  ███████  ██████  ██████  ██    ██ ██       ██        ██████ 
- ====================================================================================
-
-  █   █  
-   █ █    | 
-  █████   |  ██████  ███████  ██████  ██████     ██    ██████   ██████    ██████ 
- ██ █ ██  | ██    ██ ██    ██   ██   ██    ██   ████   ██    ██ ██    ██ ██    ██
-█████████ | ██    ██ ██    ██   ██   ██        ██  ██  ██    ██ ██    ██ ██      
-█ █████ █ |  ██████  ███████    ██    ██████  ██    ██ ██████   ██████    ██████ 
-█ █████ █ | ██    ██ █     ██   ██         ██ ████████ ██       ██             ██
-   █ █    | ██    ██ ██    ██   ██   ██    ██ ██    ██ ██       ██       ██    ██
-  ██ ██   |  ██████  ███████  ██████  ██████  ██    ██ ██       ██        ██████ 
-
-====================================================================================
+ * Checks if the configuration directory is initialized.
+ * @returns {Promise<boolean>} True if initialized with at least one config.
  */
-async function main() {
+async function isInitialized() {
+  try {
+    await fs.access(getConfigurationsDir());
+    const configs = await listConfigurations();
+    return configs.length > 0;
+  } catch {
+    return false;
+  }
+}
+//
+/**
+ * Waits for user to press ENTER to continue.
+ */
+async function waitForKeypress() {
+  await inquirer.prompt([{
+    type: "input",
+    name: "continue",
+    message: "Press ENTER to continue..."
+  }]);
+}
+//
+/**
+ * Shows the application banner.
+ */
+function showBanner() {
+  const mode = isLocalMode() ? "local" : "global";
   console.log(
 `=================================================
-
-  █   █   | ${chalk.redBright("GCP Utiliy")}
-   █ █    | 
-  █████   | 
- ██ █ ██  | ${chalk.whiteBright.bold("8BitsApps")}
-█████████ | 
-█ █████ █ | We made app for fun! :D
-█ █████ █ | ${chalk.cyan("https://8bitsapps.com")}
-   █ █    | 
-  ██ ██   | 
-
-==================================================`);
-  //
-  const cmdName = await showMainMenu();
-  //
-  if (cmdName === "exit") {
-    console.log("Goodbye!");
+${chalk.hex("#FFFFFF")("   █     █    ")} |
+${chalk.hex("#ffff00")("    █   █     ")} |
+${chalk.hex("#fffF00")("   ███████    ")} |    ${chalk.hex("#F77B00").bold("GCP Utils")}
+${chalk.hex("#FFCE00")(" ███  █  ███  ")} |    by ${chalk.whiteBright.bold("8BitsApps")}
+${chalk.hex("#FFCE00")("█████████████ ")} |
+${chalk.hex("#F77B00")("█  ███████  █ ")} |    ${chalk.bgHex("#FFCE00").hex("#000000")("We made app for fun! (ツ)")}
+${chalk.hex("#F77B00")("█  ███████  █ ")} |    ${chalk.hex("#FFCE00")("https://8bitsapps.com")}
+${chalk.hex("#E73100")("    █   █     ")} |
+${chalk.hex("#E73100")("   ██   ██    ")} |    ${chalk.gray(`Mode:${mode}`)}
+_________________________________________________
+`);
+}
+//
+/**
+ * Main entry point.
+ */
+async function main() {
+  console.clear();
+  // Check if initialized.
+  if (!(await isInitialized())) {
+    console.log(chalk.yellow("Configuration not found."));
+    console.log(`Run ${chalk.cyan("gcpUtils")} after initialization to use the tool.\n`);
+    //
+    const { shouldInit } = await inquirer.prompt([{
+      type: "confirm",
+      name: "shouldInit",
+      message: "Would you like to initialize now?",
+      default: true
+    }]);
+    //
+    if (shouldInit) {
+      const initCmd = commands.find(c => c.name === "init");
+      await initCmd.execute();
+    }
     return;
   }
   //
-  const cmd = commands.find(c => c.name === cmdName);
-  if (!cmd) {
-    console.error(`Command not found: ${cmdName}`);
-    process.exit(1);
-  }
-  //
-  const configName = await showConfigMenu();
-  //
-  console.log(`\nRunning: ${cmd.description} with config: ${configName}\n`);
-  //
-  try {
-    await cmd.execute(configName);
-    console.log("\nCompleted.");
-  } catch (err) {
-    console.error(`\nError: ${err.message}`);
-    process.exit(1);
+  while (true) {
+    console.clear();
+    showBanner();
+    const cmdName = await showMainMenu();
+    //
+    // ESC pressed in main menu - exit.
+    if (cmdName === null) {
+      console.log("Goodbye!");
+      return;
+    }
+    //
+    if (cmdName === "init") {
+      const initCmd = commands.find(c => c.name === "init");
+      await initCmd.execute();
+      console.log("\n");
+      await waitForKeypress();
+      continue;
+    }
+    //
+    const cmd = commands.find(c => c.name === cmdName);
+    if (!cmd) {
+      console.error(`Command not found: ${cmdName}`);
+      continue;
+    }
+    //
+    const configName = await showConfigMenu();
+    //
+    // ESC pressed in config menu - go back to main menu.
+    if (configName === null) {
+      continue;
+    }
+    //
+    console.log(`\nRunning: ${cmd.description} with config: ${configName}\n`);
+    //
+    try {
+      await cmd.execute(configName);
+      console.log("\nCompleted.\n");
+    } catch (err) {
+      console.error(`\nError: ${err.message}\n`);
+    }
+    await waitForKeypress();
   }
 }
 //

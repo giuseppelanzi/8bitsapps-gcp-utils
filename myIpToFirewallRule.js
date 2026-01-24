@@ -1,6 +1,7 @@
 const inquirer = require("inquirer");
 const GCPUtils = require("./GCPUtils");
 const { listConfigurations } = require("./utils/configLoader.js");
+const { getConfigurationsDir } = require("./utils/paths.js");
 //
 /**
  * Shows configuration selection menu.
@@ -10,7 +11,7 @@ async function selectConfiguration() {
   const configs = await listConfigurations();
   //
   if (configs.length === 0) {
-    throw new Error("No configuration found in Configurations/.");
+    throw new Error(`No configuration found in ${getConfigurationsDir()}/. Run 'gcpUtils' to initialize.`);
   }
   //
   const choices = configs.map((cfg, i) => ({

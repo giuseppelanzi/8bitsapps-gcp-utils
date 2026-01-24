@@ -1,14 +1,34 @@
 {
   "name": "gcp-utility",
   "version": "1.0.0",
+  "description": "GCP Utility CLI for firewall and storage operations",
   "main": "gcpUtility.js",
   "bin": {
     "gcpUtils": "./gcpUtility.js"
   },
-  "keywords": [],
-  "author": "",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "gcpUtility.js",
+    "myIpToFirewallRule.js",
+    "commands/",
+    "utils/",
+    "GCPUtils/"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/giuseppelanzi/gcp-utility.git"
+  },
+  "keywords": [
+    "gcp",
+    "google-cloud",
+    "firewall",
+    "cli",
+    "utility"
+  ],
+  "author": "8BitsApps",
   "license": "ISC",
-  "description": "GCP Utility CLI for firewall and storage operations",
   "dependencies": {
     "@google-cloud/compute": "^5.2.0",
     "@google-cloud/storage": "^7.16.0",

@@ -2,6 +2,7 @@ const { JWT } = require("google-auth-library");
 const axios = require("axios");
 const compute = require("@google-cloud/compute");
 const fs = require("fs/promises");
+const { getConfigPath, getCredentialsPath } = require("../utils/paths.js");
 
 class Network {
   constructor(configName) {
@@ -20,11 +21,11 @@ class Network {
       throw new Error(`Missing configuration name.`);
     //
     try {
-      const configFileName = `Configurations/gcp-options-${this.configurationName}.json`;
+      const configFileName = getConfigPath(this.configurationName);
       console.log(`Loading configuration: ${configFileName}.`);
       this.configuration = JSON.parse(await fs.readFile(configFileName, "utf8"));
       //
-      const credentialsFileName = `Credentials/${this.configuration.credentialsFile}`;
+      const credentialsFileName = getCredentialsPath(this.configuration.credentialsFile);
       console.log(`Loading credentials: ${credentialsFileName}.`);
       this.credentials = JSON.parse(await fs.readFile(credentialsFileName, "utf8"));
       //

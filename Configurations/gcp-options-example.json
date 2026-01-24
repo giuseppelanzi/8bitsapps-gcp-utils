@@ -5,5 +5,6 @@
   "defaultFixedIPAddresses": [
     "8.8.8.8/32"
   ],
+  "buckets" : [],
   "defaultBucket": "YOUR_BUCKET_NAME"
 }
