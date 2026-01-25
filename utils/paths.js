@@ -2,7 +2,7 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs");
 //
-const APP_NAME = "gcp-utils";
+const APP_NAME = "8bitsapps-gcp-utils";
 const LOCAL_CONFIG_DIR = "Configurations";
 const LOCAL_CREDS_DIR = "Credentials";
 //
