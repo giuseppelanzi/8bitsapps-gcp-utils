@@ -4,4 +4,4 @@ Configurations/*
 !Configurations/gcp-options-example.json
 Credentials/*
 !Credentials/gcp-credentials-example.json
-.claude/plans/
+.claude/
