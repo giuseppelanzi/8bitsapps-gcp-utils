@@ -1,5 +1,5 @@
 const inquirer = require("inquirer");
-const GCPUtils = require("./GCPUtils");
+const GCPUtils = require("./GCPUtilities");
 const { listConfigurations } = require("./utils/configLoader.js");
 const { getConfigurationsDir } = require("./utils/paths.js");
 //

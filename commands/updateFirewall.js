@@ -1,4 +1,4 @@
-const GCPUtils = require("../GCPUtils");
+const GCPUtils = require("../GCPUtilities");
 //
 /**
  * Executes the firewall update command.

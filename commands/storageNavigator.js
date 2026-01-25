@@ -1,7 +1,7 @@
 const path = require("path");
 const inquirer = require("inquirer");
 const chalk = require("chalk");
-const Storage = require("../GCPUtils/Storage.js");
+const Storage = require("../GCPUtilities/Storage.js");
 const ListWithEscapePrompt = require("../utils/prompts/listWithEscape.js");
 const { getSettings } = require("../utils/settings.js");
 //
