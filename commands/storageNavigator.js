@@ -231,46 +231,49 @@ const command = {
       }
       //
       switch (result.action) {
-        case "folder":
-          // Force newline, then go back up and overwrite inquirer's colored line.
-          const folderDisplayName = getDisplayName(result.value, currentPath);
-          const folderDisplayPath = currentPath || "/";
-          process.stdout.write(`\x1b[1A\x1b[2K\x1b[G`);
-          process.stdout.write(`? ${bucketName}:${folderDisplayPath} (← back, ESC exit) ${chalk.cyan(`[D] ${folderDisplayName}`)}`);
-          // Enter folder.
-          pathHistory.push(result.value);
-          break;
+      case "folder": {
+        // Force newline, then go back up and overwrite inquirer's colored line.
+        const folderDisplayName = getDisplayName(result.value, currentPath);
+        const folderDisplayPath = currentPath || "/";
+        process.stdout.write("\x1b[1A\x1b[2K\x1b[G");
+        process.stdout.write(`? ${bucketName}:${folderDisplayPath} (← back, ESC exit) ${chalk.cyan(`[D] ${folderDisplayName}`)}`);
+        // Enter folder.
+        pathHistory.push(result.value);
+        break;
+      }
+      //
+      case "file": {
+        // Download file.
+        const fileName = path.basename(result.value);
+        const localPath = path.join(process.cwd(), fileName);
         //
-        case "file":
-          // Download file.
-          const fileName = path.basename(result.value);
-          const localPath = path.join(process.cwd(), fileName);
+        console.log(chalk.yellow(`\n⏳ Downloading ${fileName}...`));
+        try {
+          await storage.downloadFile(bucketName, result.value, localPath);
+          operationLogs.push({ type: "success", message: `Downloaded: ${fileName} → ${localPath}` });
+        } catch (err) {
+          operationLogs.push({ type: "error", message: `Download failed: ${fileName} - ${err.message}` });
+        }
+        break;
+      }
+      //
+      case "upload": {
+        // Upload file.
+        const uploadPath = await promptUploadPath();
+        if (uploadPath) {
+          const uploadFileName = path.basename(uploadPath);
+          const remotePath = currentPath + uploadFileName;
           //
-          console.log(chalk.yellow(`\n⏳ Downloading ${fileName}...`));
+          console.log(chalk.yellow(`\n⏳ Uploading ${uploadFileName}...`));
           try {
-            await storage.downloadFile(bucketName, result.value, localPath);
-            operationLogs.push({ type: "success", message: `Downloaded: ${fileName} → ${localPath}` });
+            await storage.uploadFile(bucketName, uploadPath, remotePath);
+            operationLogs.push({ type: "success", message: `Uploaded: ${uploadFileName} → ${bucketName}/${remotePath}` });
           } catch (err) {
-            operationLogs.push({ type: "error", message: `Download failed: ${fileName} - ${err.message}` });
+            operationLogs.push({ type: "error", message: `Upload failed: ${uploadFileName} - ${err.message}` });
           }
-          break;
-        //
-        case "upload":
-          // Upload file.
-          const uploadPath = await promptUploadPath();
-          if (uploadPath) {
-            const uploadFileName = path.basename(uploadPath);
-            const remotePath = currentPath + uploadFileName;
-            //
-            console.log(chalk.yellow(`\n⏳ Uploading ${uploadFileName}...`));
-            try {
-              await storage.uploadFile(bucketName, uploadPath, remotePath);
-              operationLogs.push({ type: "success", message: `Uploaded: ${uploadFileName} → ${bucketName}/${remotePath}` });
-            } catch (err) {
-              operationLogs.push({ type: "error", message: `Upload failed: ${uploadFileName} - ${err.message}` });
-            }
-          }
-          break;
+        }
+        break;
+      }
       }
     }
   }

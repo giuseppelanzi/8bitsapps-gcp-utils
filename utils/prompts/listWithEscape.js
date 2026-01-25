@@ -1,7 +1,6 @@
 const ListPrompt = require("inquirer/lib/prompts/list");
 const observe = require("inquirer/lib/utils/events");
 const { takeUntil, filter } = require("rxjs/operators");
-const chalk = require("chalk");
 //
 /**
  * Custom list prompt with ESC and left arrow support.

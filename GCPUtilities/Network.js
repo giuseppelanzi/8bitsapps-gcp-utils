@@ -18,7 +18,7 @@ class Network {
       return; // Already loaded
     }
     if (!this.configurationName)
-      throw new Error(`Missing configuration name.`);
+      throw new Error("Missing configuration name.");
     //
     try {
       const configFileName = getConfigPath(this.configurationName);
@@ -32,7 +32,7 @@ class Network {
       this.authClient = new JWT({
         email: this.credentials?.client_email,
         key: this.credentials?.private_key,
-        scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+        scopes: ["https://www.googleapis.com/auth/cloud-platform"],
       });
       this.computeClient = new compute.FirewallsClient({ auth: this.authClient });
     } 
@@ -51,7 +51,7 @@ class Network {
 
   async getPublicIP() {
     try {
-      const res = await axios.get('https://api.ipify.org?format=json');
+      const res = await axios.get("https://api.ipify.org?format=json");
       return res.data.ip;
     } catch (error) {
       console.error("Error getting public IP:", error);

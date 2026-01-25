@@ -91,7 +91,7 @@ async function waitForKeypress() {
     //
     console.log(chalk.gray("Press ENTER or ESC to continue..."));
     //
-    process.stdin.once("keypress", (str, key) => {
+    process.stdin.once("keypress", (_str, _key) => {
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(false);
       }
@@ -107,7 +107,7 @@ async function waitForKeypress() {
 function showBanner() {
   const mode = isLocalMode() ? "local" : "global";
   console.log(
-`=================================================
+    `=================================================
 ${chalk.hex("#FFFFFF")("   █     █    ")} |
 ${chalk.hex("#ffff00")("    █   █     ")} |
 ${chalk.hex("#fffF00")("   ███████    ")} |    ${chalk.hex("#F77B00").bold("GCP Utils")}
