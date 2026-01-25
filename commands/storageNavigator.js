@@ -48,8 +48,9 @@ async function selectBucket(buckets) {
   const { selected } = await inquirer.prompt([{
     type: "listWithEscape",
     name: "selected",
-    message: "Select bucket (← back, ESC exit):",
-    choices
+    message: "Select bucket (ESC exit):",
+    choices,
+    enableBack: false
   }]);
   //
   return selected;
@@ -60,9 +61,11 @@ async function selectBucket(buckets) {
  * @param {string} bucketName - Current bucket.
  * @param {string} currentPath - Current path prefix.
  * @param {{folders: string[], files: Array<{name: string, size: number}>}} contents - Folder contents.
+ * @param {{maxItems: number, backEnabled: boolean}} options - Menu options.
  * @returns {Promise<{action: string, value: string}|null>} Selected action or null if ESC pressed.
  */
-async function showNavigationMenu(bucketName, currentPath, contents, maxItems) {
+async function showNavigationMenu(bucketName, currentPath, contents, options) {
+  const { maxItems, backEnabled } = options;
   const displayPath = currentPath || "/";
   const choices = [];
   let itemCount = 0;
@@ -109,11 +112,16 @@ async function showNavigationMenu(bucketName, currentPath, contents, maxItems) {
     value: { action: "upload", value: currentPath }
   });
   //
+  const message = backEnabled
+    ? `${bucketName}:${displayPath} (← back, ESC exit)`
+    : `${bucketName}:${displayPath} (ESC exit)`;
+  //
   const { selected } = await inquirer.prompt([{
     type: "listWithEscape",
     name: "selected",
-    message: `${bucketName}:${displayPath} (← back, ESC exit)`,
-    choices
+    message,
+    choices,
+    enableBack: backEnabled
   }]);
   //
   return selected;
@@ -189,11 +197,11 @@ const command = {
       const currentPath = pathHistory[pathHistory.length - 1];
       //
       // List objects at current path.
-      process.stdout.write(chalk.yellow(`⏳ Listing ${currentPath || "/"}...`));
+      process.stdout.write(chalk.yellow(`\n⏳ Listing ${currentPath || "/"}...`));
       let contents;
       try {
         contents = await storage.listObjects(bucketName, currentPath);
-        // Clear the "Listing..." line.
+        // Clear the "Listing..." line (current line, no move up).
         process.stdout.write("\x1b[2K\x1b[G");
       } catch (err) {
         process.stdout.write("\n");
@@ -202,26 +210,33 @@ const command = {
       }
       //
       // Show navigation menu.
-      const result = await showNavigationMenu(bucketName, currentPath, contents, maxItems);
+      const backEnabled = pathHistory.length > 1;
+      const result = await showNavigationMenu(bucketName, currentPath, contents, { maxItems, backEnabled });
       //
       if (result === null) {
         // ESC pressed - exit storage navigator completely.
+        const exitDisplayPath = currentPath || "/";
+        const exitHint = backEnabled ? "(← back, ESC exit)" : "(ESC exit)";
+        process.stdout.write(`\x1b[1A\x1b[2K\x1b[G? ${bucketName}:${exitDisplayPath} ${exitHint} ${chalk.red("<- exit")}`);
+        console.log();
         return;
       }
       //
       if (result.action === "back") {
-        // Left arrow pressed - go back one level.
-        if (pathHistory.length > 1) {
-          pathHistory.pop();
-          continue;
-        } else {
-          // At root, exit navigator.
-          return;
-        }
+        // Left arrow pressed - go back one level (only possible when backEnabled is true).
+        const backDisplayPath = currentPath || "/";
+        process.stdout.write(`\x1b[1A\x1b[2K\x1b[G? ${bucketName}:${backDisplayPath} (← back, ESC exit) ${chalk.cyan("<- back")}`);
+        pathHistory.pop();
+        continue;
       }
       //
       switch (result.action) {
         case "folder":
+          // Force newline, then go back up and overwrite inquirer's colored line.
+          const folderDisplayName = getDisplayName(result.value, currentPath);
+          const folderDisplayPath = currentPath || "/";
+          process.stdout.write(`\x1b[1A\x1b[2K\x1b[G`);
+          process.stdout.write(`? ${bucketName}:${folderDisplayPath} (← back, ESC exit) ${chalk.cyan(`[D] ${folderDisplayName}`)}`);
           // Enter folder.
           pathHistory.push(result.value);
           break;

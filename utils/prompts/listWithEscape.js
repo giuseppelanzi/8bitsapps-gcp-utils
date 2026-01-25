@@ -12,8 +12,9 @@ class ListWithEscapePrompt extends ListPrompt {
   _run(cb) {
     this.done = cb;
     const events = observe(this.rl);
+    const enableBack = this.opt.enableBack !== false;
     //
-    // Handle ESC key - exit completely.
+    // Handle ESC key - exit completely (always enabled).
     events.keypress
       .pipe(
         takeUntil(events.line),
@@ -23,27 +24,25 @@ class ListWithEscapePrompt extends ListPrompt {
         const height = this.screen.height || 1;
         const moveUp = Math.max(1, height - 1);
         process.stdout.write(`\x1b[${moveUp}A\x1b[J\x1b[G`);
-        const message = this.opt.message;
-        process.stdout.write(`? ${message} ${chalk.red("<- exit")}`);
         this.screen.done();
         this.done(null);
       });
     //
-    // Handle left arrow - go back one level.
-    events.keypress
-      .pipe(
-        takeUntil(events.line),
-        filter(({ key }) => key && key.name === "left")
-      )
-      .forEach(() => {
-        const height = this.screen.height || 1;
-        const moveUp = Math.max(1, height - 1);
-        process.stdout.write(`\x1b[${moveUp}A\x1b[J\x1b[G`);
-        const message = this.opt.message;
-        process.stdout.write(`? ${message} ${chalk.cyan("<- back")}`);
-        this.screen.done();
-        this.done({ action: "back" });
-      });
+    // Handle left arrow - go back one level (only if enabled).
+    if (enableBack) {
+      events.keypress
+        .pipe(
+          takeUntil(events.line),
+          filter(({ key }) => key && key.name === "left")
+        )
+        .forEach(() => {
+          const height = this.screen.height || 1;
+          const moveUp = Math.max(1, height - 1);
+          process.stdout.write(`\x1b[${moveUp}A\x1b[J\x1b[G`);
+          this.screen.done();
+          this.done({ action: "back" });
+        });
+    }
     //
     return super._run(cb);
   }

@@ -28,7 +28,8 @@ async function showMainMenu() {
     type: "listWithEscape",
     name: "selected",
     message: "Select command (ESC to exit):",
-    choices
+    choices,
+    enableBack: false
   }]);
   //
   return selected;
@@ -55,7 +56,8 @@ async function showConfigMenu() {
     type: "listWithEscape",
     name: "selected",
     message: "Select configuration (ESC to go back):",
-    choices
+    choices,
+    enableBack: false
   }]);
   //
   return selected;
@@ -76,14 +78,27 @@ async function isInitialized() {
 }
 //
 /**
- * Waits for user to press ENTER to continue.
+ * Waits for user to press ENTER or ESC to continue.
  */
 async function waitForKeypress() {
-  await inquirer.prompt([{
-    type: "input",
-    name: "continue",
-    message: "Press ENTER to continue..."
-  }]);
+  return new Promise((resolve) => {
+    const readline = require("readline");
+    readline.emitKeypressEvents(process.stdin);
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+    //
+    console.log(chalk.gray("Press ENTER or ESC to continue..."));
+    //
+    process.stdin.once("keypress", (str, key) => {
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+      resolve();
+    });
+  });
 }
 //
 /**
