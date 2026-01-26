@@ -7,7 +7,7 @@ const { listConfigurations } = require("./utils/configLoader.js");
 const commands = require("./commands/index.js");
 const ListWithEscapePrompt = require("./utils/prompts/listWithEscape.js");
 //
-const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const packageJson = require("./package.json");
 //
 // Register custom prompt with ESC support.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
