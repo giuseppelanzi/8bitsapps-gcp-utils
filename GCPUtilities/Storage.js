@@ -180,6 +180,53 @@ class Storage {
       resumable: false
     });
   }
+  //
+  /**
+   * Creates a folder (empty placeholder object) in the bucket.
+   * @param {string} bucketName - Name of the bucket.
+   * @param {string} folderPath - Path of the folder (must end with /).
+   * @returns {Promise<void>}
+   */
+  async createFolder(bucketName, folderPath) {
+    await this.loadConfiguration();
+    //
+    const bucket = this.storage.bucket(bucketName);
+    const normalizedPath = folderPath.endsWith("/") ? folderPath : folderPath + "/";
+    const file = bucket.file(normalizedPath);
+    await file.save("", { contentType: "application/x-directory" });
+  }
+  //
+  /**
+   * Deletes a file from the bucket.
+   * @param {string} bucketName - Name of the bucket.
+   * @param {string} filePath - Path of the file to delete.
+   * @returns {Promise<void>}
+   */
+  async deleteFile(bucketName, filePath) {
+    await this.loadConfiguration();
+    //
+    const bucket = this.storage.bucket(bucketName);
+    const file = bucket.file(filePath);
+    await file.delete();
+  }
+  //
+  /**
+   * Deletes a folder and all its contents from the bucket.
+   * @param {string} bucketName - Name of the bucket.
+   * @param {string} folderPath - Path of the folder to delete.
+   * @returns {Promise<number>} Number of deleted files.
+   */
+  async deleteFolder(bucketName, folderPath) {
+    await this.loadConfiguration();
+    //
+    const bucket = this.storage.bucket(bucketName);
+    const [files] = await bucket.getFiles({ prefix: folderPath });
+    //
+    for (const file of files) {
+      await file.delete();
+    }
+    return files.length;
+  }
 }
 
 module.exports = Storage;
