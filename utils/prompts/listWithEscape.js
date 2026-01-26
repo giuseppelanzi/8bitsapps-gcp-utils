@@ -39,6 +39,24 @@ class ListWithEscapePrompt extends ListPrompt {
         });
     }
     //
+    // Handle delete key - delete selected item (only if deleteFilter allows).
+    events.keypress
+      .pipe(
+        takeUntil(events.line),
+        filter(({ key }) => key && key.name === "delete")
+      )
+      .forEach(() => {
+        const selectedValue = this.opt.choices.getChoice(this.selected).value;
+        // Check if delete is allowed for this item.
+        const deleteFilter = this.opt.deleteFilter;
+        if (deleteFilter && !deleteFilter(selectedValue)) {
+          return; // Ignore delete key for this item.
+        }
+        process.stdout.write(`\x1b[${(this.screen.height || 1) - 1}A\x1b[J\x1b[G`);
+        this.screen.done();
+        this.done({ action: "delete", value: selectedValue });
+      });
+    //
     return super._run(cb);
   }
 }

@@ -108,20 +108,25 @@ async function showNavigationMenu(bucketName, currentPath, contents, options) {
     choices.push(new inquirer.Separator(chalk.yellow(`(showing first ${maxItems} items)`)));
   }
   choices.push({
-    name: chalk.green("Upload file here"),
+    name: chalk.green("↑ Upload file here"),
     value: { action: "upload", value: currentPath }
+  });
+  choices.push({
+    name: chalk.green("+ Create folder here"),
+    value: { action: "createFolder", value: currentPath }
   });
   //
   const message = backEnabled
-    ? `${bucketName}:${displayPath} (← back, ESC exit)`
-    : `${bucketName}:${displayPath} (ESC exit)`;
+    ? `${bucketName}:${displayPath} (← back, DEL delete, ESC exit)`
+    : `${bucketName}:${displayPath} (DEL delete, ESC exit)`;
   //
   const { selected } = await inquirer.prompt([{
     type: "listWithEscape",
     name: "selected",
     message,
     choices,
-    enableBack: backEnabled
+    enableBack: backEnabled,
+    deleteFilter: (value) => value?.action === "file" || value?.action === "folder"
   }]);
   //
   return selected;
@@ -139,6 +144,41 @@ async function promptUploadPath() {
   }]);
   //
   return filePath || null;
+}
+//
+/**
+ * Prompts for folder name to create.
+ * @returns {Promise<string|null>} Folder name or null if cancelled.
+ */
+async function promptFolderName() {
+  const { folderName } = await inquirer.prompt([{
+    type: "input",
+    name: "folderName",
+    message: "Enter folder name (or leave empty to cancel):",
+    validate: (input) => {
+      if (!input.trim()) return true;
+      if (input.includes("/")) return "Folder name cannot contain /";
+      return true;
+    }
+  }]);
+  //
+  return folderName.trim() || null;
+}
+//
+/**
+ * Prompts for delete confirmation.
+ * @param {string} itemName - Name of the item to delete.
+ * @param {string} itemType - Type of item ("file" or "folder").
+ * @returns {Promise<boolean>} True if confirmed.
+ */
+async function confirmDelete(itemName, itemType) {
+  const { confirmed } = await inquirer.prompt([{
+    type: "confirm",
+    name: "confirmed",
+    message: `Delete ${itemType} "${itemName}"?`,
+    default: false
+  }]);
+  return confirmed;
 }
 //
 /**
@@ -183,6 +223,9 @@ const command = {
     if (bucketName === null || bucketName?.action === "back") {
       return; // ESC or back arrow pressed.
     }
+    // Position cursor at end of bucket selection line.
+    process.stdout.write("\x1b[1A\x1b[2K\x1b[G");
+    process.stdout.write(`? Select bucket (ESC exit): ${bucketName}`);
     //
     // Navigation loop.
     const pathHistory = [""];
@@ -213,7 +256,7 @@ const command = {
       if (result === null) {
         // ESC pressed - exit storage navigator completely.
         const exitDisplayPath = currentPath || "/";
-        const exitHint = backEnabled ? "(← back, ESC exit)" : "(ESC exit)";
+        const exitHint = backEnabled ? "(← back, DEL delete, ESC exit)" : "(DEL delete, ESC exit)";
         process.stdout.write(`\x1b[1A\x1b[2K\x1b[G? ${bucketName}:${exitDisplayPath} ${exitHint} ${chalk.red("<- exit")}`);
         console.log();
         return;
@@ -222,8 +265,41 @@ const command = {
       if (result.action === "back") {
         // Left arrow pressed - go back one level (only possible when backEnabled is true).
         const backDisplayPath = currentPath || "/";
-        process.stdout.write(`\x1b[1A\x1b[2K\x1b[G? ${bucketName}:${backDisplayPath} (← back, ESC exit) ${chalk.cyan("<- back")}`);
+        process.stdout.write(`\x1b[1A\x1b[2K\x1b[G? ${bucketName}:${backDisplayPath} (← back, DEL delete, ESC exit) ${chalk.cyan("<- back")}`);
         pathHistory.pop();
+        continue;
+      }
+      //
+      if (result.action === "delete") {
+        const selectedValue = result.value;
+        // Skip if not a file or folder (e.g., upload/createFolder option).
+        if (!selectedValue?.action || (selectedValue.action !== "file" && selectedValue.action !== "folder")) {
+          continue;
+        }
+        //
+        const isFolder = selectedValue.action === "folder";
+        const itemPath = selectedValue.value;
+        const itemName = getDisplayName(itemPath, currentPath);
+        //
+        const confirmed = await confirmDelete(itemName, isFolder ? "folder" : "file");
+        if (confirmed) {
+          const itemType = isFolder ? "folder" : "file";
+          process.stdout.write(chalk.yellow(`\n⏳ Deleting ${itemType} ${itemName}...`));
+          try {
+            if (isFolder) {
+              const count = await storage.deleteFolder(bucketName, itemPath);
+              process.stdout.write("\x1b[2K\x1b[G");
+              operationLogs.push({ type: "success", message: `Deleted folder "${itemName}" (${count} files)` });
+            } else {
+              await storage.deleteFile(bucketName, itemPath);
+              process.stdout.write("\x1b[2K\x1b[G");
+              operationLogs.push({ type: "success", message: `Deleted file "${itemName}"` });
+            }
+          } catch (err) {
+            process.stdout.write("\x1b[2K\x1b[G");
+            operationLogs.push({ type: "error", message: `Delete failed: ${itemName} - ${err.message}` });
+          }
+        }
         continue;
       }
       //
@@ -233,7 +309,7 @@ const command = {
         const folderDisplayName = getDisplayName(result.value, currentPath);
         const folderDisplayPath = currentPath || "/";
         process.stdout.write("\x1b[1A\x1b[2K\x1b[G");
-        process.stdout.write(`? ${bucketName}:${folderDisplayPath} (← back, ESC exit) ${chalk.cyan(`[D] ${folderDisplayName}`)}`);
+        process.stdout.write(`? ${bucketName}:${folderDisplayPath} (← back, DEL delete, ESC exit) ${chalk.cyan(`[D] ${folderDisplayName}`)}`);
         // Enter folder.
         pathHistory.push(result.value);
         break;
@@ -275,6 +351,27 @@ const command = {
             // Clear the "Uploading..." line.
             process.stdout.write("\x1b[2K\x1b[G");
             operationLogs.push({ type: "error", message: `Upload failed: ${uploadFileName} - ${err.message}` });
+          }
+        }
+        break;
+      }
+      //
+      case "createFolder": {
+        // Create folder.
+        const folderName = await promptFolderName();
+        if (folderName) {
+          const remotePath = currentPath + folderName + "/";
+          //
+          process.stdout.write(chalk.yellow(`\n⏳ Creating folder ${folderName}...`));
+          try {
+            await storage.createFolder(bucketName, remotePath);
+            // Clear the "Creating..." line.
+            process.stdout.write("\x1b[2K\x1b[G");
+            operationLogs.push({ type: "success", message: `Folder created: ${folderName} at ${bucketName}:${currentPath || "/"}` });
+          } catch (err) {
+            // Clear the "Creating..." line.
+            process.stdout.write("\x1b[2K\x1b[G");
+            operationLogs.push({ type: "error", message: `Create folder failed: ${folderName} - ${err.message}` });
           }
         }
         break;
