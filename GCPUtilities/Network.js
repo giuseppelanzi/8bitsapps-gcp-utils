@@ -1,4 +1,3 @@
-const { JWT } = require("google-auth-library");
 const axios = require("axios");
 const compute = require("@google-cloud/compute");
 const fs = require("fs/promises");
@@ -9,7 +8,6 @@ class Network {
     this.configurationName = configName;
     this.configuration = null;
     this.credentials = null;
-    this.authClient = null;
     this.computeClient = null;
   }
 
@@ -29,12 +27,10 @@ class Network {
       console.log(`Loading credentials: ${credentialsFileName}.`);
       this.credentials = JSON.parse(await fs.readFile(credentialsFileName, "utf8"));
       //
-      this.authClient = new JWT({
-        email: this.credentials?.client_email,
-        key: this.credentials?.private_key,
-        scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+      this.computeClient = new compute.FirewallsClient({
+        credentials: this.credentials,
+        projectId: this.configuration.defaultProjectId
       });
-      this.computeClient = new compute.FirewallsClient({ auth: this.authClient });
     } 
     catch (ex) {
       console.error(`Error while reading the config file: ${ex}.`);
@@ -45,7 +41,6 @@ class Network {
   unloadConfiguration() {
     this.configuration = null;
     this.credentials = null;
-    this.authClient = null;
     this.computeClient = null;
   }
 
