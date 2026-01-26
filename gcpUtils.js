@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-const fs = require("fs/promises");
+const fs = require("fs");
 const inquirer = require("inquirer");
 const chalk = require("chalk");
 const { isLocalMode, getConfigurationsDir } = require("./utils/paths.js");
 const { listConfigurations } = require("./utils/configLoader.js");
 const commands = require("./commands/index.js");
 const ListWithEscapePrompt = require("./utils/prompts/listWithEscape.js");
+//
+const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 //
 // Register custom prompt with ESC support.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
@@ -69,7 +71,7 @@ async function showConfigMenu() {
  */
 async function isInitialized() {
   try {
-    await fs.access(getConfigurationsDir());
+    await fs.promises.access(getConfigurationsDir());
     const configs = await listConfigurations();
     return configs.length > 0;
   } catch {
@@ -110,7 +112,7 @@ function showBanner() {
     `=================================================
 ${chalk.hex("#FFFFFF")("   █     █    ")} |
 ${chalk.hex("#ffff00")("    █   █     ")} |
-${chalk.hex("#fffF00")("   ███████    ")} |    ${chalk.hex("#F77B00").bold("GCP Utils")}
+${chalk.hex("#fffF00")("   ███████    ")} |    ${chalk.hex("#F77B00").bold("GCP Utils")} ${chalk.gray(`v${packageJson.version}`)}
 ${chalk.hex("#FFCE00")(" ███  █  ███  ")} |    by ${chalk.whiteBright.bold("8BitsApps")}
 ${chalk.hex("#FFCE00")("█████████████ ")} |
 ${chalk.hex("#F77B00")("█  ███████  █ ")} |    ${chalk.bgHex("#FFCE00").hex("#000000")("We made app for fun! (ツ)")}
@@ -177,7 +179,7 @@ async function main() {
       continue;
     }
     //
-    console.log(`\nRunning: ${cmd.description} with config: ${configName}\n`);
+    console.log(`Running: ${cmd.description} with config: ${configName}`);
     //
     try {
       await cmd.execute(configName);

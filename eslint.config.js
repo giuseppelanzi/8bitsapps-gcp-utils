@@ -12,15 +12,15 @@ module.exports = [
       }
     },
     rules: {
-      // Errori critici.
+      // Crytical errore.
       "no-undef": "error",
       "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
       "no-dupe-keys": "error",
       "no-duplicate-case": "error",
       "no-unreachable": "error",
       //
-      // Stile (come da AGENTS.md).
-      "quotes": ["error", "double"],
+      // Styles (from AGENTS.md).
+      "quotes": ["error", "double", { "avoidEscape": true, "allowTemplateLiterals": false }],
       "indent": ["error", 2],
       "semi": ["error", "always"]
     }

@@ -19,6 +19,7 @@ Guidelines for agents (Codex CLI, Claude Code, etc.) working on this repository.
 
 ## Code formatting
 - Never put empty lines inside a method; use a `//` line to separate code sections.
+- Never put a comment right under a statement. Use an empty comment line before the next statement.
 - Comments must always end with a period.
 - Prefer `"` for strings; use backticks only for interpolation (`${var}`) or multiline.
 - Use 2-space indentation, not tabs.

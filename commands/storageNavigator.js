@@ -148,9 +148,6 @@ async function promptUploadPath() {
 function showOperationLog(logs) {
   if (logs.length === 0) return;
   //
-  console.log(chalk.gray("════════════════════════════════════════"));
-  console.log(chalk.gray(" OPERATION LOG"));
-  console.log(chalk.gray("════════════════════════════════════════"));
   for (const log of logs) {
     if (log.type === "success") {
       console.log(chalk.green(` ✓ ${log.message}`));
@@ -160,7 +157,6 @@ function showOperationLog(logs) {
       console.log(chalk.gray(` · ${log.message}`));
     }
   }
-  console.log(chalk.gray("════════════════════════════════════════\n"));
 }
 //
 /**
@@ -194,6 +190,7 @@ const command = {
     //
     while (true) {
       showOperationLog(operationLogs);
+      operationLogs.length = 0;
       const currentPath = pathHistory[pathHistory.length - 1];
       //
       // List objects at current path.
@@ -247,11 +244,15 @@ const command = {
         const fileName = path.basename(result.value);
         const localPath = path.join(process.cwd(), fileName);
         //
-        console.log(chalk.yellow(`\n⏳ Downloading ${fileName}...`));
+        process.stdout.write(chalk.yellow(`\n⏳ Downloading ${fileName}...`));
         try {
           await storage.downloadFile(bucketName, result.value, localPath);
+          // Clear the "Downloading..." line.
+          process.stdout.write("\x1b[2K\x1b[G");
           operationLogs.push({ type: "success", message: `Downloaded: ${fileName} → ${localPath}` });
         } catch (err) {
+          // Clear the "Downloading..." line.
+          process.stdout.write("\x1b[2K\x1b[G");
           operationLogs.push({ type: "error", message: `Download failed: ${fileName} - ${err.message}` });
         }
         break;
@@ -264,11 +265,15 @@ const command = {
           const uploadFileName = path.basename(uploadPath);
           const remotePath = currentPath + uploadFileName;
           //
-          console.log(chalk.yellow(`\n⏳ Uploading ${uploadFileName}...`));
+          process.stdout.write(chalk.yellow(`\n⏳ Uploading ${uploadFileName}...`));
           try {
             await storage.uploadFile(bucketName, uploadPath, remotePath);
+            // Clear the "Uploading..." line.
+            process.stdout.write("\x1b[2K\x1b[G");
             operationLogs.push({ type: "success", message: `Uploaded: ${uploadFileName} → ${bucketName}/${remotePath}` });
           } catch (err) {
+            // Clear the "Uploading..." line.
+            process.stdout.write("\x1b[2K\x1b[G");
             operationLogs.push({ type: "error", message: `Upload failed: ${uploadFileName} - ${err.message}` });
           }
         }

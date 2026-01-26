@@ -20,9 +20,7 @@ class ListWithEscapePrompt extends ListPrompt {
         filter(({ key }) => key && key.name === "escape")
       )
       .forEach(() => {
-        const height = this.screen.height || 1;
-        const moveUp = Math.max(1, height - 1);
-        process.stdout.write(`\x1b[${moveUp}A\x1b[J\x1b[G`);
+        process.stdout.write(`\x1b[${this.screen.height}A\x1b[J\x1b[G`);
         this.screen.done();
         this.done(null);
       });
@@ -35,9 +33,7 @@ class ListWithEscapePrompt extends ListPrompt {
           filter(({ key }) => key && key.name === "left")
         )
         .forEach(() => {
-          const height = this.screen.height || 1;
-          const moveUp = Math.max(1, height - 1);
-          process.stdout.write(`\x1b[${moveUp}A\x1b[J\x1b[G`);
+          process.stdout.write(`\x1b[${(this.screen.height || 1) - 1}A\x1b[J\x1b[G`);
           this.screen.done();
           this.done({ action: "back" });
         });
