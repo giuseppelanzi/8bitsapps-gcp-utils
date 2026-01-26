@@ -110,15 +110,15 @@ function showBanner() {
   const mode = isLocalMode() ? "local" : "global";
   console.log(
     `=================================================
-${chalk.hex("#FFFFFF")("   █     █    ")} |
-${chalk.hex("#ffff00")("    █   █     ")} |
-${chalk.hex("#fffF00")("   ███████    ")} |    ${chalk.hex("#F77B00").bold("GCP Utils")} ${chalk.gray(`v${packageJson.version}`)}
-${chalk.hex("#FFCE00")(" ███  █  ███  ")} |    by ${chalk.whiteBright.bold("8BitsApps")}
-${chalk.hex("#FFCE00")("█████████████ ")} |
-${chalk.hex("#F77B00")("█  ███████  █ ")} |    ${chalk.bgHex("#FFCE00").hex("#000000")("We made app for fun! (ツ)")}
-${chalk.hex("#F77B00")("█  ███████  █ ")} |    ${chalk.hex("#FFCE00")("https://8bitsapps.com")}
-${chalk.hex("#E73100")("    █   █     ")} |
-${chalk.hex("#E73100")("   ██   ██    ")} |    ${chalk.gray(`Mode:${mode}`)}
+${chalk.hex("#FFFFFF")("      █     █    ")}   |
+${chalk.hex("#ffff00")("       █   █     ")}   |
+${chalk.hex("#fffF00")("      ███████    ")}   |    ${chalk.hex("#F77B00").bold("GCP Utils")} ${chalk.gray(`v${packageJson.version}`)}
+${chalk.hex("#FFCE00")("    ███  █  ███  ")}   |    by ${chalk.whiteBright.bold("8BitsApps")}
+${chalk.hex("#FFCE00")("   █████████████ ")}   |
+${chalk.hex("#F77B00")("   █  ███████  █ ")}   |    ${chalk.bgHex("#FFCE00").hex("#000000")("We made app for fun! (ツ)")}
+${chalk.hex("#F77B00")("   █  ███████  █ ")}   |    ${chalk.hex("#FFCE00")("https://8bitsapps.com")}
+${chalk.hex("#E73100")("       █   █     ")}   |
+${chalk.hex("#E73100")("      ██   ██    ")}   |    ${chalk.gray(`Mode:${mode}`)}
 _________________________________________________
 `);
 }
