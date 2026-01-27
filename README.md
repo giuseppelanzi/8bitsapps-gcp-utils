@@ -20,6 +20,9 @@ Interactive navigator for Google Cloud Storage:
 - View files with size information.
 - Download files to current directory.
 - Upload local files to GCS.
+- Create folders in GCS.
+- Delete files from GCS.
+- Delete folders from GCS (recursive).
 - Support for multiple buckets per configuration.
 
 ### Initialize configuration
