@@ -135,9 +135,11 @@ function showUpdateNotification(updateInfo) {
   //
   const msg = `Update available: ${updateInfo.current} → ${updateInfo.latest}`;
   const cmd = `npm install -g ${packageJson.name}`;
+  const sudoWrn = "(sudo might be required)";
   //
   console.log(chalk.white(`  ${msg}`));
   console.log(chalk.gray(`  Run: ${chalk.cyan(cmd)}`));
+  console.log(chalk.gray(`       ${chalk.cyan(sudoWrn)}`));
   console.log(chalk.hex("#FFCE00")("_".repeat(boxWidth) + "\n"));
 }
 //
