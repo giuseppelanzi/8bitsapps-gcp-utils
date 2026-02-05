@@ -9,7 +9,7 @@ const ListWithEscapePrompt = require("./utils/prompts/listWithEscape.js");
 const { checkForUpdates } = require("./utils/updateChecker.js");
 //
 const packageJson = require("./package.json");
-const boxWidth = 55;
+const boxWidth = 71;
 //
 // Register custom prompt with ESC support.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
@@ -115,10 +115,10 @@ function showBanner() {
 ${chalk.hex("#FFFFFF")("       █     █    ")}   |
 ${chalk.hex("#ffff00")("        █   █     ")}   |
 ${chalk.hex("#fffF00")("       ███████    ")}   |    ${chalk.hex("#F77B00").bold("GCP Utils")} ${chalk.gray(`v${packageJson.version}`)}
-${chalk.hex("#FFCE00")("     ███  █  ███  ")}   |    by ${chalk.whiteBright.bold("8BitsApps")}
+${chalk.hex("#FFCE00")("     ███  █  ███  ")}   |    by ${chalk.whiteBright.bold("8BitsApps")} - ${chalk.hex("#FFCE00")("https://8bitsapps.com")}
 ${chalk.hex("#FFCE00")("    █████████████ ")}   |
 ${chalk.hex("#F77B00")("    █  ███████  █ ")}   |    ${chalk.bgHex("#FFCE00").hex("#000000")("We make app for fun! (ツ)")}
-${chalk.hex("#F77B00")("    █  ███████  █ ")}   |    ${chalk.hex("#FFCE00")("https://8bitsapps.com")}
+${chalk.hex("#F77B00")("    █  ███████  █ ")}   |    Support us - ${chalk.hex("#FFCE00")("https://ko-fi.com/8bitsapps")}
 ${chalk.hex("#E73100")("        █   █     ")}   |
 ${chalk.hex("#E73100")("       ██   ██    ")}   |    ${chalk.gray(`Mode:${mode}`)}
 ${chalk.hex("#F77B00")("_".repeat(boxWidth))}\n`);

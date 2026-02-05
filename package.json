@@ -1,6 +1,6 @@
 {
   "name": "8bitsapps-gcp-utils",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "GCP Utility CLI for firewall and storage operations",
   "main": "gcpUtils.js",
   "bin": {
