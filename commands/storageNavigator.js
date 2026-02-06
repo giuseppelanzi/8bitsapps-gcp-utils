@@ -79,7 +79,7 @@ async function showNavigationMenu(bucketName, currentPath, contents, options) {
     }
     const displayName = getDisplayName(folder, currentPath);
     choices.push({
-      name: chalk.blue(`[D] ${displayName}`),
+      name: `[D] ${displayName}`,
       value: { action: "folder", value: folder }
     });
     itemCount++;
