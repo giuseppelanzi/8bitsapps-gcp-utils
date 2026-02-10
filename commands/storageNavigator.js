@@ -1,34 +1,12 @@
 const path = require("path");
 const inquirer = require("inquirer");
-const chalk = require("chalk");
 const Storage = require("../GCPUtilities/Storage.js");
 const ListWithEscapePrompt = require("../utils/prompts/listWithEscape.js");
 const { getSettings } = require("../utils/settings.js");
+const ui = require("../utils/ui.js");
 //
 // Register custom prompt.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
-//
-/**
- * Formats file size in human readable format.
- * @param {number} bytes - Size in bytes.
- * @returns {string} Formatted size.
- */
-function formatSize(bytes) {
-  if (bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
-}
-//
-/**
- * Extracts the display name from a full path.
- * @param {string} fullPath - The full path.
- * @param {string} prefix - The current prefix.
- * @returns {string} The display name.
- */
-function getDisplayName(fullPath, prefix) {
-  return fullPath.slice(prefix.length);
-}
 //
 /**
  * Shows bucket selection menu.
@@ -77,7 +55,7 @@ async function showNavigationMenu(bucketName, currentPath, contents, options) {
       truncated = true;
       break;
     }
-    const displayName = getDisplayName(folder, currentPath);
+    const displayName = ui.getDisplayName(folder, currentPath);
     choices.push({
       name: `[D] ${displayName}`,
       value: { action: "folder", value: folder }
@@ -91,8 +69,8 @@ async function showNavigationMenu(bucketName, currentPath, contents, options) {
       truncated = true;
       break;
     }
-    const displayName = getDisplayName(file.name, currentPath);
-    const sizeStr = formatSize(file.size);
+    const displayName = ui.getDisplayName(file.name, currentPath);
+    const sizeStr = ui.formatSize(file.size);
     choices.push({
       name: `[F] ${displayName} (${sizeStr})`,
       value: { action: "file", value: file.name }
@@ -100,24 +78,24 @@ async function showNavigationMenu(bucketName, currentPath, contents, options) {
     itemCount++;
   }
   //
-  // Add separator and upload option.
+  // Add separator and action options.
   if (choices.length > 0) {
-    choices.push(new inquirer.Separator("─────────────"));
+    choices.push(new inquirer.Separator("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
   }
   if (truncated) {
-    choices.push(new inquirer.Separator(chalk.yellow(`(showing first ${maxItems} items)`)));
+    choices.push(new inquirer.Separator(ui.formatTruncationNotice(maxItems)));
   }
   choices.push({
-    name: chalk.green("↑ Upload file here"),
+    name: ui.formatUploadChoice(),
     value: { action: "upload", value: currentPath }
   });
   choices.push({
-    name: chalk.green("+ Create folder here"),
+    name: ui.formatCreateFolderChoice(),
     value: { action: "createFolder", value: currentPath }
   });
   //
   const message = backEnabled
-    ? `${bucketName}:${displayPath} (← back, DEL delete, ESC exit)`
+    ? `${bucketName}:${displayPath} (\u2190 back, DEL delete, ESC exit)`
     : `${bucketName}:${displayPath} (DEL delete, ESC exit)`;
   //
   const { selected } = await inquirer.prompt([{
@@ -182,24 +160,6 @@ async function confirmDelete(itemName, itemType) {
 }
 //
 /**
- * Shows the operation log section.
- * @param {Array<{type: string, message: string}>} logs - Array of log entries.
- */
-function showOperationLog(logs) {
-  if (logs.length === 0) return;
-  //
-  for (const log of logs) {
-    if (log.type === "success") {
-      console.log(chalk.green(` ✓ ${log.message}`));
-    } else if (log.type === "error") {
-      console.log(chalk.red(` ✗ ${log.message}`));
-    } else {
-      console.log(chalk.gray(` · ${log.message}`));
-    }
-  }
-}
-//
-/**
  * Storage Navigator command.
  */
 const command = {
@@ -214,7 +174,7 @@ const command = {
     // Get available buckets.
     const buckets = await storage.getBuckets();
     if (buckets.length === 0) {
-      console.log(chalk.red("No buckets configured. Add 'buckets' array or 'defaultBucket' to your configuration."));
+      ui.showError("No buckets configured. Add 'buckets' array or 'defaultBucket' to your configuration.");
       return;
     }
     //
@@ -224,28 +184,28 @@ const command = {
       return; // ESC or back arrow pressed.
     }
     // Position cursor at end of bucket selection line.
-    process.stdout.write("\x1b[1A\x1b[2K\x1b[G");
-    process.stdout.write(`? Select bucket (ESC exit): ${bucketName}`);
+    ui.clearLineAbove();
+    ui.writeInline(`? Select bucket (ESC exit): ${bucketName}`);
     //
     // Navigation loop.
     const pathHistory = [""];
     const operationLogs = [];
     //
     while (true) {
-      showOperationLog(operationLogs);
+      ui.showOperationLog(operationLogs);
       operationLogs.length = 0;
       const currentPath = pathHistory[pathHistory.length - 1];
       //
       // List objects at current path.
-      process.stdout.write(chalk.yellow(`\n⏳ Listing ${currentPath || "/"}...`));
+      ui.showProgress(`Listing ${currentPath || "/"}`);
       let contents;
       try {
         contents = await storage.listObjects(bucketName, currentPath);
         // Clear the "Listing..." line (current line, no move up).
-        process.stdout.write("\x1b[2K\x1b[G");
+        ui.clearLine();
       } catch (err) {
-        process.stdout.write("\n");
-        console.log(chalk.red(`Error listing objects: ${err.message}`));
+        ui.writeInline("\n");
+        ui.showError(`Error listing objects: ${err.message}`);
         return;
       }
       //
@@ -256,8 +216,8 @@ const command = {
       if (result === null) {
         // ESC pressed - exit storage navigator completely.
         const exitDisplayPath = currentPath || "/";
-        const exitHint = backEnabled ? "(← back, DEL delete, ESC exit)" : "(DEL delete, ESC exit)";
-        process.stdout.write(`\x1b[1A\x1b[2K\x1b[G? ${bucketName}:${exitDisplayPath} ${exitHint} ${chalk.red("<- exit")}`);
+        const exitHint = backEnabled ? "(\u2190 back, DEL delete, ESC exit)" : "(DEL delete, ESC exit)";
+        ui.overwriteLineAbove(`? ${bucketName}:${exitDisplayPath} ${exitHint} ${ui.formatExitLabel()}`);
         console.log();
         return;
       }
@@ -265,7 +225,7 @@ const command = {
       if (result.action === "back") {
         // Left arrow pressed - go back one level (only possible when backEnabled is true).
         const backDisplayPath = currentPath || "/";
-        process.stdout.write(`\x1b[1A\x1b[2K\x1b[G? ${bucketName}:${backDisplayPath} (← back, DEL delete, ESC exit) ${chalk.cyan("<- back")}`);
+        ui.overwriteLineAbove(`? ${bucketName}:${backDisplayPath} (\u2190 back, DEL delete, ESC exit) ${ui.formatBackLabel()}`);
         pathHistory.pop();
         continue;
       }
@@ -279,24 +239,24 @@ const command = {
         //
         const isFolder = selectedValue.action === "folder";
         const itemPath = selectedValue.value;
-        const itemName = getDisplayName(itemPath, currentPath);
+        const itemName = ui.getDisplayName(itemPath, currentPath);
         //
         const confirmed = await confirmDelete(itemName, isFolder ? "folder" : "file");
         if (confirmed) {
           const itemType = isFolder ? "folder" : "file";
-          process.stdout.write(chalk.yellow(`\n⏳ Deleting ${itemType} ${itemName}...`));
+          ui.showProgress(`Deleting ${itemType} ${itemName}`);
           try {
             if (isFolder) {
               const count = await storage.deleteFolder(bucketName, itemPath);
-              process.stdout.write("\x1b[2K\x1b[G");
+              ui.clearLine();
               operationLogs.push({ type: "success", message: `Deleted folder "${itemName}" (${count} files)` });
             } else {
               await storage.deleteFile(bucketName, itemPath);
-              process.stdout.write("\x1b[2K\x1b[G");
+              ui.clearLine();
               operationLogs.push({ type: "success", message: `Deleted file "${itemName}"` });
             }
           } catch (err) {
-            process.stdout.write("\x1b[2K\x1b[G");
+            ui.clearLine();
             operationLogs.push({ type: "error", message: `Delete failed: ${itemName} - ${err.message}` });
           }
         }
@@ -306,10 +266,10 @@ const command = {
       switch (result.action) {
       case "folder": {
         // Force newline, then go back up and overwrite inquirer's colored line.
-        const folderDisplayName = getDisplayName(result.value, currentPath);
+        const folderDisplayName = ui.getDisplayName(result.value, currentPath);
         const folderDisplayPath = currentPath || "/";
-        process.stdout.write("\x1b[1A\x1b[2K\x1b[G");
-        process.stdout.write(`? ${bucketName}:${folderDisplayPath} (← back, DEL delete, ESC exit) ${chalk.cyan(`[D] ${folderDisplayName}`)}`);
+        ui.clearLineAbove();
+        ui.writeInline(`? ${bucketName}:${folderDisplayPath} (\u2190 back, DEL delete, ESC exit) ${ui.formatFolderLabel(folderDisplayName)}`);
         // Enter folder.
         pathHistory.push(result.value);
         break;
@@ -320,15 +280,15 @@ const command = {
         const fileName = path.basename(result.value);
         const localPath = path.join(process.cwd(), fileName);
         //
-        process.stdout.write(chalk.yellow(`\n⏳ Downloading ${fileName}...`));
+        ui.showProgress(`Downloading ${fileName}`);
         try {
           await storage.downloadFile(bucketName, result.value, localPath);
           // Clear the "Downloading..." line.
-          process.stdout.write("\x1b[2K\x1b[G");
-          operationLogs.push({ type: "success", message: `Downloaded: ${fileName} → ${localPath}` });
+          ui.clearLine();
+          operationLogs.push({ type: "success", message: `Downloaded: ${fileName} \u2192 ${localPath}` });
         } catch (err) {
           // Clear the "Downloading..." line.
-          process.stdout.write("\x1b[2K\x1b[G");
+          ui.clearLine();
           operationLogs.push({ type: "error", message: `Download failed: ${fileName} - ${err.message}` });
         }
         break;
@@ -341,15 +301,15 @@ const command = {
           const uploadFileName = path.basename(uploadPath);
           const remotePath = currentPath + uploadFileName;
           //
-          process.stdout.write(chalk.yellow(`\n⏳ Uploading ${uploadFileName}...`));
+          ui.showProgress(`Uploading ${uploadFileName}`);
           try {
             await storage.uploadFile(bucketName, uploadPath, remotePath);
             // Clear the "Uploading..." line.
-            process.stdout.write("\x1b[2K\x1b[G");
-            operationLogs.push({ type: "success", message: `Uploaded: ${uploadFileName} → ${bucketName}/${remotePath}` });
+            ui.clearLine();
+            operationLogs.push({ type: "success", message: `Uploaded: ${uploadFileName} \u2192 ${bucketName}/${remotePath}` });
           } catch (err) {
             // Clear the "Uploading..." line.
-            process.stdout.write("\x1b[2K\x1b[G");
+            ui.clearLine();
             operationLogs.push({ type: "error", message: `Upload failed: ${uploadFileName} - ${err.message}` });
           }
         }
@@ -362,15 +322,15 @@ const command = {
         if (folderName) {
           const remotePath = currentPath + folderName + "/";
           //
-          process.stdout.write(chalk.yellow(`\n⏳ Creating folder ${folderName}...`));
+          ui.showProgress(`Creating folder ${folderName}`);
           try {
             await storage.createFolder(bucketName, remotePath);
             // Clear the "Creating..." line.
-            process.stdout.write("\x1b[2K\x1b[G");
+            ui.clearLine();
             operationLogs.push({ type: "success", message: `Folder created: ${folderName} at ${bucketName}:${currentPath || "/"}` });
           } catch (err) {
             // Clear the "Creating..." line.
-            process.stdout.write("\x1b[2K\x1b[G");
+            ui.clearLine();
             operationLogs.push({ type: "error", message: `Create folder failed: ${folderName} - ${err.message}` });
           }
         }

@@ -17,24 +17,16 @@ class Storage {
     if (!this.configurationName)
       throw new Error("Missing configuration name.");
     //
-    try {
-      const configFileName = getConfigPath(this.configurationName);
-      console.log(`Loading configuration: ${configFileName}.`);
-      this.configuration = JSON.parse(await fs.readFile(configFileName, "utf8"));
-      //
-      const credentialsFileName = getCredentialsPath(this.configuration.credentialsFile);
-      console.log(`Loading credentials: ${credentialsFileName}.`);
-      this.credentials = JSON.parse(await fs.readFile(credentialsFileName, "utf8"));
-      //
-      this.storage = new GoogleCloudStorage({
-        credentials: this.credentials,
-        projectId: this.configuration.defaultProjectId
-      });
-    }
-    catch (ex) {
-      console.error(`Error while reading the config file: ${ex}.`);
-      throw ex;
-    }
+    const configFileName = getConfigPath(this.configurationName);
+    this.configuration = JSON.parse(await fs.readFile(configFileName, "utf8"));
+    //
+    const credentialsFileName = getCredentialsPath(this.configuration.credentialsFile);
+    this.credentials = JSON.parse(await fs.readFile(credentialsFileName, "utf8"));
+    //
+    this.storage = new GoogleCloudStorage({
+      credentials: this.credentials,
+      projectId: this.configuration.defaultProjectId
+    });
   }
 
   unloadConfiguration() {
@@ -79,7 +71,7 @@ class Storage {
         destination: uniquePathCloud,
         resumable: false,
       });
-      console.log(`File uploaded to ${bucket}/${uniquePathCloud}.`);
+      return { bucket, path: uniquePathCloud };
     } catch (err) {
       throw new Error(`Error uploading file ${resolvedPathFile} to GCloud ${uniquePathCloud}: ${err}`);
     }
