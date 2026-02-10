@@ -13,29 +13,21 @@ class Network {
 
   async loadConfiguration() {
     if (this.configuration) {
-      return; // Already loaded
+      return; // Already loaded.
     }
     if (!this.configurationName)
       throw new Error("Missing configuration name.");
     //
-    try {
-      const configFileName = getConfigPath(this.configurationName);
-      console.log(`Loading configuration: ${configFileName}.`);
-      this.configuration = JSON.parse(await fs.readFile(configFileName, "utf8"));
-      //
-      const credentialsFileName = getCredentialsPath(this.configuration.credentialsFile);
-      console.log(`Loading credentials: ${credentialsFileName}.`);
-      this.credentials = JSON.parse(await fs.readFile(credentialsFileName, "utf8"));
-      //
-      this.computeClient = new compute.FirewallsClient({
-        credentials: this.credentials,
-        projectId: this.configuration.defaultProjectId
-      });
-    } 
-    catch (ex) {
-      console.error(`Error while reading the config file: ${ex}.`);
-      throw ex;
-    }
+    const configFileName = getConfigPath(this.configurationName);
+    this.configuration = JSON.parse(await fs.readFile(configFileName, "utf8"));
+    //
+    const credentialsFileName = getCredentialsPath(this.configuration.credentialsFile);
+    this.credentials = JSON.parse(await fs.readFile(credentialsFileName, "utf8"));
+    //
+    this.computeClient = new compute.FirewallsClient({
+      credentials: this.credentials,
+      projectId: this.configuration.defaultProjectId
+    });
   }
 
   unloadConfiguration() {
@@ -45,13 +37,8 @@ class Network {
   }
 
   async getPublicIP() {
-    try {
-      const res = await axios.get("https://api.ipify.org?format=json");
-      return res.data.ip;
-    } catch (error) {
-      console.error("Error getting public IP:", error);
-      throw error;
-    }
+    const res = await axios.get("https://api.ipify.org?format=json");
+    return res.data.ip;
   }
 
   async updateFirewall(options) {
@@ -68,31 +55,28 @@ class Network {
     const ip = await this.getPublicIP();
     const ipCidr = `${ip}/32`;
     //
-    try {
-      const [rule] = await this.computeClient.get({
-        project: projectId,
-        firewall: firewallRule,
-      });
-      //
-      const updatedRule = {
-        ...rule,
-        sourceRanges: [...(fixedIPAddresses || []), ipCidr],
-      };
-      //
-      const [operation] = await this.computeClient.patch({
-        project: projectId,
-        firewall: firewallRule,
-        firewallResource: updatedRule,
-      });
-      //
-      console.log("Firewall updated. Operation:", operation.name);
-    } catch (err) {
-      if (err.code === 404) {
-        console.log("Rule not found!");
-      } else {
-        console.error("Error:", err);
-      }
-    }
+    const [rule] = await this.computeClient.get({
+      project: projectId,
+      firewall: firewallRule,
+    });
+    //
+    const updatedRule = {
+      ...rule,
+      sourceRanges: [...(fixedIPAddresses || []), ipCidr],
+    };
+    //
+    const [operation] = await this.computeClient.patch({
+      project: projectId,
+      firewall: firewallRule,
+      firewallResource: updatedRule,
+    });
+    //
+    return {
+      operationName: operation.name,
+      ip: ipCidr,
+      firewallRule,
+      projectId
+    };
   }
 }
 

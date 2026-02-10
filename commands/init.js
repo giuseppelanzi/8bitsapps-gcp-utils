@@ -1,7 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
-const chalk = require("chalk");
 const { getGlobalConfigDir } = require("../utils/paths.js");
+const ui = require("../utils/ui.js");
 //
 /**
  * Init command - initializes the global configuration directory.
@@ -14,7 +14,7 @@ const command = {
     const configurationsDir = path.join(configDir, "configurations");
     const credentialsDir = path.join(configDir, "credentials");
     //
-    console.log(chalk.cyan("Initializing gcp-utils configuration..."));
+    ui.showInfo("Initializing gcp-utils configuration...");
     console.log(`Config directory: ${configDir}`);
     //
     // Create directories if they don't exist.
@@ -33,13 +33,13 @@ const command = {
     //
     try {
       await fs.access(exampleConfigPath);
-      console.log(chalk.yellow("Example config already exists."));
+      ui.showWarning("Example config already exists.");
     } catch {
       await fs.writeFile(exampleConfigPath, JSON.stringify(exampleConfig, null, 2));
-      console.log(chalk.green(`Created: ${exampleConfigPath}`));
+      ui.showSuccess(`Created: ${exampleConfigPath}`);
     }
     //
-    console.log(chalk.cyan("\nSetup complete!"));
+    ui.showInfo("\nSetup complete!");
     console.log("\nNext steps:");
     console.log(`1. Add your GCP credentials JSON to: ${credentialsDir}/`);
     console.log(`2. Edit configuration files in: ${configurationsDir}/`);

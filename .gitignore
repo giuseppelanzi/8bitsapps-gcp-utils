@@ -5,6 +5,6 @@ Configurations/*
 Credentials/*
 !Credentials/gcp-credentials-example.json
 .claude/
-.agents/
+_agents/
 claude.md
 agents.md

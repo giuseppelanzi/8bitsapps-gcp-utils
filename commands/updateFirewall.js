@@ -1,4 +1,5 @@
 const GCPUtils = require("../GCPUtilities");
+const ui = require("../utils/ui.js");
 //
 /**
  * Executes the firewall update command.
@@ -6,7 +7,8 @@ const GCPUtils = require("../GCPUtilities");
  */
 async function execute(configName) {
   const networkManager = new GCPUtils.Network(configName);
-  await networkManager.updateFirewall();
+  const result = await networkManager.updateFirewall();
+  ui.showSuccess(`Firewall "${result.firewallRule}" updated with IP ${result.ip}. Operation: ${result.operationName}.`);
 }
 //
 module.exports = {
