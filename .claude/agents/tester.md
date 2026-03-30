@@ -56,11 +56,7 @@ npm run lint:fix  # Auto-fix (only if explicitly approved).
 
 ## Checklist: all changes
 
-- [ ] No empty lines inside methods (use `//` for section breaks).
-- [ ] No comments directly after statements (blank comment line between).
-- [ ] All comments end with a period.
-- [ ] Double quotes for strings, backticks only for interpolation.
-- [ ] 2-space indentation throughout.
+- [ ] All rules in **AGENTS.md → Code formatting** are respected.
 - [ ] No console output in GCPUtilities/ beyond configuration loading messages.
 
 ## Reporting format

@@ -75,7 +75,7 @@ Owns the Storage utility class — the GCP Cloud Storage SDK wrapper for bucket 
 
 ## Do
 
-- Follow the GCPUtilities class pattern from [backend.md](_agents/backend.md) (parent agent).
+- Follow the GCPUtilities class pattern from [backend.md](.claude/agents/backend.md) (parent agent).
 - Return structured data objects from methods.
 - Use `resolvePath()` for local path resolution in upload methods.
 - Handle folder paths correctly (ensure trailing `/` for folder operations).
@@ -91,6 +91,6 @@ Owns the Storage utility class — the GCP Cloud Storage SDK wrapper for bucket 
 
 ## See also
 
-- [backend.md](_agents/backend.md) — shared patterns and utilities (parent agent).
-- [backend-network.md](_agents/backend-subagents/backend-network.md) — peer agent for network operations.
-- [ui-storage.md](_agents/ui-subagents/ui-storage.md) — UI layer that formats Storage class output.
+- [backend.md](.claude/agents/backend.md) — shared patterns and utilities (parent agent).
+- [backend-network.md](.claude/agents/backend-subagents/backend-network.md) — peer agent for network operations.
+- [ui-storage.md](.claude/agents/ui-subagents/ui-storage.md) — UI layer that formats Storage class output.

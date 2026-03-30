@@ -94,7 +94,7 @@ while (true) {
 - Use `enableBack: false` for bucket selection, `enableBack: true` for nested navigation.
 - Use `deleteFilter` to limit which items can be deleted.
 - Validate input in prompts (e.g., folder name cannot contain `/`).
-- Follow the listWithEscape contract from [ux.md](_agents/ux.md) (parent agent).
+- Follow the listWithEscape contract from [ux.md](.claude/agents/ux.md) (parent agent).
 
 ## Do not
 
@@ -112,6 +112,6 @@ UX and UI code are interleaved. The practical rule:
 
 ## See also
 
-- [ux.md](_agents/ux.md) — shared UX patterns, listWithEscape contract, menu prompt pattern (parent agent).
-- [backend-storage.md](_agents/backend-subagents/backend-storage.md) — the Storage class API that this flow calls.
-- [ui-storage.md](_agents/ui-subagents/ui-storage.md) — the visual layer for storage navigator.
+- [ux.md](.claude/agents/ux.md) — shared UX patterns, listWithEscape contract, menu prompt pattern (parent agent).
+- [backend-storage.md](.claude/agents/backend-subagents/backend-storage.md) — the Storage class API that this flow calls.
+- [ui-storage.md](.claude/agents/ui-subagents/ui-storage.md) — the visual layer for storage navigator.

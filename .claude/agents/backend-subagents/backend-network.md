@@ -65,7 +65,7 @@ Behavior:
 
 ## Do
 
-- Follow the GCPUtilities class pattern from [backend.md](_agents/backend.md) (parent agent).
+- Follow the GCPUtilities class pattern from [backend.md](.claude/agents/backend.md) (parent agent).
 - Return structured data objects from methods.
 - Validate `projectId` and `firewallRule` presence before GCP operations.
 - Use CIDR notation (`/32`) for single IP addresses in `sourceRanges`.
@@ -79,6 +79,6 @@ Behavior:
 
 ## See also
 
-- [backend.md](_agents/backend.md) — shared patterns and utilities (parent agent).
-- [backend-storage.md](_agents/backend-subagents/backend-storage.md) — peer agent for storage operations.
-- [ui-network.md](_agents/ui-subagents/ui-network.md) — UI layer that consumes Network class output.
+- [backend.md](.claude/agents/backend.md) — shared patterns and utilities (parent agent).
+- [backend-storage.md](.claude/agents/backend-subagents/backend-storage.md) — peer agent for storage operations.
+- [ui-network.md](.claude/agents/ui-subagents/ui-network.md) — UI layer that consumes Network class output.

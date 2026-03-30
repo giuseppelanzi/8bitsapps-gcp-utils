@@ -41,7 +41,7 @@ Pattern: **instantiate backend → call method → show result via `ui.*`**.
 ## Do
 
 - Use `utils/ui.js` methods for all user-facing output.
-- Follow the command export pattern from [backend.md](_agents/backend.md).
+- Follow the command export pattern from [backend.md](.claude/agents/backend.md).
 - Keep the command thin — delegate all GCP logic to Backend Network.
 
 ## Do not
@@ -53,6 +53,6 @@ Pattern: **instantiate backend → call method → show result via `ui.*`**.
 
 ## See also
 
-- [ui.md](_agents/ui.md) — general UI patterns, color palette, `utils/ui.js` ownership (parent agent).
-- [backend-network.md](_agents/backend-subagents/backend-network.md) — the backend layer this command consumes.
-- [ui-storage.md](_agents/ui-subagents/ui-storage.md) — peer agent for storage UI.
+- [ui.md](.claude/agents/ui.md) — general UI patterns, color palette, `utils/ui.js` ownership (parent agent).
+- [backend-network.md](.claude/agents/backend-subagents/backend-network.md) — the backend layer this command consumes.
+- [ui-storage.md](.claude/agents/ui-subagents/ui-storage.md) — peer agent for storage UI.

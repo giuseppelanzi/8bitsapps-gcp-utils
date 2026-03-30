@@ -1,5 +1,6 @@
 const updateFirewall = require("./updateFirewall.js");
 const storageNavigator = require("./storageNavigator.js");
+const gcpJanitor = require("./gcpJanitor.js");
 const init = require("./init.js");
 //
 /**
@@ -8,6 +9,7 @@ const init = require("./init.js");
 const commands = [
   updateFirewall,
   storageNavigator,
+  gcpJanitor,
   init
 ];
 //

@@ -32,6 +32,13 @@ function writeInline(text) {
   process.stdout.write(text);
 }
 //
+/**
+ * Prints a blank line.
+ */
+function blankLine() {
+  console.log();
+}
+//
 // --- Progress indicators. ---
 //
 /**
@@ -39,7 +46,16 @@ function writeInline(text) {
  * @param {string} message - Progress message (without trailing dots).
  */
 function showProgress(message) {
-  process.stdout.write(chalk.yellow(`\n\u23f3 ${message}...`));
+  process.stdout.write(chalk.yellow(`\u23f3 ${message}...`));
+}
+//
+/**
+ * Returns a formatted progress string (no newline, no I/O).
+ * @param {string} message - Progress message (without trailing dots).
+ * @returns {string} Chalk-formatted progress string.
+ */
+function formatProgress(message) {
+  return chalk.yellow(`\u23f3 ${message}...`);
 }
 //
 // --- Formatting helpers. ---
@@ -64,6 +80,82 @@ function formatSize(bytes) {
  */
 function getDisplayName(fullPath, prefix) {
   return fullPath.slice(prefix.length);
+}
+//
+/**
+ * Formats text in green.
+ * @param {string} text - Text to format.
+ * @returns {string} Chalk-formatted green text.
+ */
+function formatGreen(text) {
+  return chalk.green(text);
+}
+//
+/**
+ * Formats text in red.
+ * @param {string} text - Text to format.
+ * @returns {string} Chalk-formatted red text.
+ */
+function formatRed(text) {
+  return chalk.red(text);
+}
+//
+/**
+ * Formats text in yellow.
+ * @param {string} text - Text to format.
+ * @returns {string} Chalk-formatted yellow text.
+ */
+function formatYellow(text) {
+  return chalk.yellow(text);
+}
+//
+/**
+ * Formats text in gray.
+ * @param {string} text - Text to format.
+ * @returns {string} Chalk-formatted gray text.
+ */
+function formatGray(text) {
+  return chalk.gray(text);
+}
+//
+/**
+ * Formats an ISO timestamp to a short date string.
+ * @param {string} isoString - ISO 8601 timestamp.
+ * @returns {string} Formatted date or "-".
+ */
+function formatDate(isoString) {
+  if (!isoString) return "-";
+  const d = new Date(isoString);
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+//
+/**
+ * Calculates how many days ago a timestamp was.
+ * @param {string} isoString - ISO 8601 timestamp.
+ * @returns {string} Human-readable "X days" or "-".
+ */
+function formatDaysAgo(isoString) {
+  if (!isoString) return "-";
+  const days = Math.floor((Date.now() - new Date(isoString).getTime()) / 86400000);
+  return `${days} days`;
+}
+//
+/**
+ * Formats a section header with brand color.
+ * @param {string} title - Section title.
+ * @returns {string} Chalk-formatted section header.
+ */
+function formatSectionHeader(title) {
+  return chalk.hex("#F77B00").bold(title);
+}
+//
+/**
+ * Prints a section header with blank line above for spacing.
+ * @param {string} title - Section title.
+ */
+function showSectionHeader(title) {
+  console.log();
+  console.log(chalk.hex("#F77B00").bold(title));
 }
 //
 // --- Operation log rendering. ---
@@ -180,11 +272,21 @@ module.exports = {
   clearLineAbove,
   overwriteLineAbove,
   writeInline,
+  blankLine,
   // Progress.
   showProgress,
+  formatProgress,
   // Formatting.
   formatSize,
   getDisplayName,
+  formatGreen,
+  formatRed,
+  formatYellow,
+  formatGray,
+  formatDate,
+  formatDaysAgo,
+  formatSectionHeader,
+  showSectionHeader,
   // Operation log.
   showOperationLog,
   // Menu choices.

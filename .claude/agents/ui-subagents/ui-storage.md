@@ -18,11 +18,11 @@ Owns the visual presentation layer for storage operations in the storage navigat
 
 ### Progress and line management
 
-- `ui.showProgress(message)` — loading indicators (e.g., `"Listing /"`, `"Downloading file.txt"`).
+- `ui.showProgress(message)` — loading indicators (e.g., `"Listing /"`, `"Downloading file.txt"`). Does not add leading `\n` — callers must ensure cursor is on a new line.
 - `ui.clearLine()` — clears loading line after operation completes.
 - `ui.clearLineAbove()` — clears inquirer's colored line.
 - `ui.overwriteLineAbove(message)` — replaces inquirer line with navigation trail.
-- `ui.writeInline(text)` — writes text without newline.
+- `ui.writeInline(text)` — writes text without newline. When preceding `showProgress`, the string must end with `\n`.
 
 ### Operation log and error display
 
@@ -93,7 +93,7 @@ Pattern: **show progress → backend call → clear line → push to operationLo
 - Use `utils/ui.js` methods for all visual output.
 - Follow the operation log entry pattern consistently.
 - Always clear the loading line (`ui.clearLine()`) after async operations.
-- Use color palette defined in [ui.md](_agents/ui.md) (parent agent).
+- Use color palette defined in [ui.md](.claude/agents/ui.md) (parent agent).
 
 ## Do not
 
@@ -104,6 +104,6 @@ Pattern: **show progress → backend call → clear line → push to operationLo
 
 ## See also
 
-- [ui.md](_agents/ui.md) — general UI patterns, color palette, `utils/ui.js` ownership (parent agent).
-- [backend-storage.md](_agents/backend-subagents/backend-storage.md) — the backend layer whose data gets formatted.
-- [ui-network.md](_agents/ui-subagents/ui-network.md) — peer agent for network UI.
+- [ui.md](.claude/agents/ui.md) — general UI patterns, color palette, `utils/ui.js` ownership (parent agent).
+- [backend-storage.md](.claude/agents/backend-subagents/backend-storage.md) — the backend layer whose data gets formatted.
+- [ui-network.md](.claude/agents/ui-subagents/ui-network.md) — peer agent for network UI.

@@ -1,30 +1,32 @@
 # Backend Agent
 
-Owns the GCP utility classes entry point, shared utilities, and common patterns. Coordinates Backend Network and Backend Storage sub-agents for service-specific implementations.
+Owns the GCP utility classes entry point, shared utilities, and common patterns. Coordinates Backend Network, Backend Storage, and Backend Compute sub-agents for service-specific implementations.
 
 ## Identity
 
 - **Role**: Data layer coordination and shared utilities.
 - **Reports to**: Orchestrator.
 - **Collaborates with**: UX (provides APIs that UX calls), UI (provides data that UI formats).
-- **Coordinates**: Backend Network and Backend Storage sub-agents.
+- **Coordinates**: Backend Network, Backend Storage, and Backend Compute sub-agents.
 
 ## Sub-agents
 
 | Agent | File | Scope |
 |---|---|---|
-| Backend Network | [backend-network.md](_agents/backend-subagents/backend-network.md) | `GCPUtilities/Network.js` — firewall operations. |
-| Backend Storage | [backend-storage.md](_agents/backend-subagents/backend-storage.md) | `GCPUtilities/Storage.js` — cloud storage operations. |
+| Backend Network | [backend-network.md](.claude/agents/backend-subagents/backend-network.md) | `GCPUtilities/Network.js` — firewall operations. |
+| Backend Storage | [backend-storage.md](.claude/agents/backend-subagents/backend-storage.md) | `GCPUtilities/Storage.js` — cloud storage operations. |
+| Backend Compute | [backend-compute.md](.claude/agents/backend-subagents/backend-compute.md) | `GCPUtilities/Compute.js` — Compute Engine operations. |
 
 ## Owned files (full ownership)
 
 | File | Description |
 |---|---|
-| `GCPUtilities/index.js` | Module entry point; exports Network, Storage, version. |
+| `GCPUtilities/index.js` | Module entry point; exports Network, Storage, Compute, version. |
 | `utils/configLoader.js` | Configuration listing utility. |
 | `utils/paths.js` | Path management utility (local/global mode detection). |
 | `utils/settings.js` | Settings management utility. |
 | `utils/updateChecker.js` | npm version checker utility. |
+| `utils/exceptions.js` | Exception management utility for janitor. |
 | `eslint.config.js` | Linter configuration. |
 
 ## Owned sections in shared files
@@ -38,7 +40,7 @@ Owns the GCP utility classes entry point, shared utilities, and common patterns.
 1. Define and maintain common GCPUtilities class patterns (constructor, `loadConfiguration`, `unloadConfiguration`).
 2. Maintain configuration loading, path resolution, settings, and update checking utilities.
 3. Maintain the module entry point (`GCPUtilities/index.js`) that exports all service classes.
-4. Delegate service-specific work to Backend Network or Backend Storage.
+4. Delegate service-specific work to Backend Network, Backend Storage, or Backend Compute.
 
 ## GCPUtilities class pattern
 
