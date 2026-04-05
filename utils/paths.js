@@ -67,11 +67,22 @@ function getCredentialsPath(credentialsFile) {
   return path.join(getCredentialsDir(), credentialsFile);
 }
 //
+/**
+ * Returns a timestamped export file path in the current working directory.
+ * @param {string} prefix - File name prefix (e.g. "vm-instances").
+ * @returns {string} Absolute path to the export CSV file.
+ */
+function getExportPath(prefix) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return path.join(process.cwd(), `${prefix}-${timestamp}.csv`);
+}
+//
 module.exports = {
   isLocalMode,
   getGlobalConfigDir,
   getConfigurationsDir,
   getCredentialsDir,
   getConfigPath,
-  getCredentialsPath
+  getCredentialsPath,
+  getExportPath
 };

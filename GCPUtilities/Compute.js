@@ -24,6 +24,8 @@ class Compute {
     this.disksClient = null;
     this.snapshotsClient = null;
     this.addressesClient = null;
+    this.machineTypesClient = null;
+    this.machineTypeCache = new Map();
   }
   //
   /**
@@ -51,6 +53,7 @@ class Compute {
     this.disksClient = new compute.DisksClient(clientOptions);
     this.snapshotsClient = new compute.SnapshotsClient(clientOptions);
     this.addressesClient = new compute.AddressesClient(clientOptions);
+    this.machineTypesClient = new compute.MachineTypesClient(clientOptions);
   }
   //
   /**
@@ -63,6 +66,50 @@ class Compute {
     this.disksClient = null;
     this.snapshotsClient = null;
     this.addressesClient = null;
+    this.machineTypesClient = null;
+    this.machineTypeCache.clear();
+  }
+  //
+  /**
+   * Resolves machine type details (vCPUs and memory) for a list of instances.
+   * Results are cached to avoid repeated API calls for the same machine type.
+   * @param {Array<{machineType: string, zone: string}>} instances - Instances with machineType and zone.
+   * @returns {Promise<Map<string, {vCPUs: number, memoryGb: number}>>} Map keyed by machine type name.
+   */
+  async resolveMachineTypes(instances) {
+    await this.loadConfiguration();
+    //
+    const projectId = this.configuration.defaultProjectId;
+    const toFetch = new Map();
+    //
+    // Collect unique machine type + zone pairs not yet cached.
+    for (const inst of instances) {
+      if (!this.machineTypeCache.has(inst.machineType)) {
+        toFetch.set(inst.machineType, inst.zone);
+      }
+    }
+    //
+    // Fetch missing machine types in parallel.
+    const entries = Array.from(toFetch.entries());
+    const results = await Promise.all(entries.map(async ([mtName, zone]) => {
+      try {
+        const [mt] = await this.machineTypesClient.get({
+          project: projectId,
+          zone: zone,
+          machineType: mtName
+        });
+        return [mtName, { vCPUs: Number(mt.guestCpus) || 0, memoryGb: Math.round((Number(mt.memoryMb) || 0) / 1024 * 100) / 100 }];
+      } catch {
+        return [mtName, { vCPUs: 0, memoryGb: 0 }];
+      }
+    }));
+    //
+    // Cache results.
+    for (const [name, specs] of results) {
+      this.machineTypeCache.set(name, specs);
+    }
+    //
+    return this.machineTypeCache;
   }
   //
   /**

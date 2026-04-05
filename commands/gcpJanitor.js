@@ -5,6 +5,8 @@ const ListWithEscapePrompt = require("../utils/prompts/listWithEscape.js");
 const { getSettings } = require("../utils/settings.js");
 const { loadExceptions, isException, addException } = require("../utils/exceptions.js");
 const ui = require("../utils/ui.js");
+const csvExporter = require("../utils/csvExporter.js");
+const paths = require("../utils/paths.js");
 //
 // Register custom prompt.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
@@ -126,6 +128,9 @@ async function showVMList(instances, maxItems) {
   if (truncated) {
     choices.push(new inquirer.Separator(ui.formatTruncationNotice(maxItems)));
   }
+  //
+  choices.push(new inquirer.Separator("─"));
+  choices.push({ name: ui.formatGreen("Export filtered VMs to CSV"), value: "__export_csv__" });
   //
   const { selected } = await inquirer.prompt([{
     type: "listWithEscape",
@@ -549,6 +554,27 @@ const command = {
               }
               if (vmChoice?.action === "back") {
                 break; // Back to inventory menu.
+              }
+              //
+              // Export filtered VMs to CSV.
+              if (vmChoice === "__export_csv__") {
+                ui.showProgress("Resolving machine type details");
+                const mtCache = await computeInstance.resolveMachineTypes(filtered);
+                ui.clearLine();
+                //
+                const headers = ["Name", "Machine Type", "vCPUs", "RAM (GB)", "Status", "Zone", "Last Start", "Created"];
+                const rows = filtered.map(i => {
+                  const specs = mtCache.get(i.machineType) || { vCPUs: "", memoryGb: "" };
+                  return [
+                    i.name, i.machineType, String(specs.vCPUs), String(specs.memoryGb),
+                    i.status, i.zone,
+                    ui.formatDate(i.lastStart), ui.formatDate(i.creationTimestamp)
+                  ];
+                });
+                const exportPath = paths.getExportPath("vm-instances");
+                const result = await csvExporter.exportToCsv(exportPath, headers, rows);
+                ui.showSuccess(`Exported ${result.rowCount} VM instances to ${result.path}`);
+                continue;
               }
               //
               // VM detail view (Level 3).
