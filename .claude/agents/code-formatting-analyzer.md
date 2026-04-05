@@ -15,10 +15,7 @@ Analyze modified code to ensure it meets project standards, follows conventions,
 ## Analysis checklist
 
 ### 1. Code formatting compliance
-- [ ] Indentation uses 2 spaces (no tabs).
-- [ ] Strings use double quotes (`"`) instead of single quotes (`'`).
-- [ ] No empty lines inside methods (use `//` for visual separation).
-- [ ] All comments end with a period.
+- [ ] All rules in **AGENTS.md → Code formatting** are respected.
 
 ### 2. Code quality
 - [ ] No duplicated code blocks.

@@ -14,12 +14,7 @@ No source files are owned by Reviewer. Reviewer reads and evaluates but does not
 
 ## Review checklist: code style
 
-- [ ] No empty lines inside methods; `//` used for section breaks.
-- [ ] No comments directly under statements; empty comment line (`//`) separates sections.
-- [ ] All comments end with a period.
-- [ ] Double quotes for strings; backticks only for `${interpolation}` or multiline.
-- [ ] 2-space indentation, no tabs.
-- [ ] Semicolons at end of statements.
+- [ ] All rules in **AGENTS.md → Code formatting** are respected.
 
 ## Review checklist: architecture compliance
 

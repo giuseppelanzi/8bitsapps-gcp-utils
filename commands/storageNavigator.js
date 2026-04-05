@@ -185,7 +185,7 @@ const command = {
     }
     // Position cursor at end of bucket selection line.
     ui.clearLineAbove();
-    ui.writeInline(`? Select bucket (ESC exit): ${bucketName}`);
+    ui.writeInline(`? Select bucket (ESC exit): ${bucketName}\n`);
     //
     // Navigation loop.
     const pathHistory = [""];
@@ -226,6 +226,7 @@ const command = {
         // Left arrow pressed - go back one level (only possible when backEnabled is true).
         const backDisplayPath = currentPath || "/";
         ui.overwriteLineAbove(`? ${bucketName}:${backDisplayPath} (\u2190 back, DEL delete, ESC exit) ${ui.formatBackLabel()}`);
+        ui.writeInline("\n");
         pathHistory.pop();
         continue;
       }
@@ -269,7 +270,7 @@ const command = {
         const folderDisplayName = ui.getDisplayName(result.value, currentPath);
         const folderDisplayPath = currentPath || "/";
         ui.clearLineAbove();
-        ui.writeInline(`? ${bucketName}:${folderDisplayPath} (\u2190 back, DEL delete, ESC exit) ${ui.formatFolderLabel(folderDisplayName)}`);
+        ui.writeInline(`? ${bucketName}:${folderDisplayPath} (\u2190 back, DEL delete, ESC exit) ${ui.formatFolderLabel(folderDisplayName)}\n`);
         // Enter folder.
         pathHistory.push(result.value);
         break;

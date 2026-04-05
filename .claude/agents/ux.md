@@ -12,7 +12,8 @@ Owns interaction flows, navigation state machines, prompt design, and menu struc
 
 | Agent | File | Scope |
 |---|---|---|
-| UX Storage | [ux-storage.md](_agents/ux-subagents/ux-storage.md) | Storage navigator flow: prompt functions, navigation state machine, action routing. |
+| UX Storage | [ux-storage.md](.claude/agents/ux-subagents/ux-storage.md) | Storage navigator flow: prompt functions, navigation state machine, action routing. |
+| UX Janitor | [ux-janitor.md](.claude/agents/ux-subagents/ux-janitor.md) | Janitor navigator flow: menus, filters, navigation state, exception marking. |
 
 Note: the network/firewall command (`updateFirewall.js`) has no UX interaction — it executes and shows a result. A UX Network sub-agent will be created when the command gains interactive flows.
 

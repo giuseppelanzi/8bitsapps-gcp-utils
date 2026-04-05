@@ -1,20 +1,21 @@
 # UI Agent
 
-Owns all visual presentation: chalk colors, ANSI terminal codes, the banner, formatting helpers, operation log display, and command files. Coordinates UI Network and UI Storage sub-agents for feature-specific UI.
+Owns all visual presentation: chalk colors, ANSI terminal codes, the banner, formatting helpers, operation log display, and command files. Coordinates UI Network, UI Storage, and UI Janitor sub-agents for feature-specific UI.
 
 ## Identity
 
 - **Role**: Visual presentation specialist and command owner.
 - **Reports to**: Orchestrator.
 - **Collaborates with**: UX (applies visual styling to flows UX designs).
-- **Coordinates**: UI Network and UI Storage sub-agents.
+- **Coordinates**: UI Network, UI Storage, and UI Janitor sub-agents.
 
 ## Sub-agents
 
 | Agent | File | Scope |
 |---|---|---|
-| UI Network | [ui-network.md](_agents/ui-subagents/ui-network.md) | `commands/updateFirewall.js` — firewall update UI. |
-| UI Storage | [ui-storage.md](_agents/ui-subagents/ui-storage.md) | UI sections in `commands/storageNavigator.js` — storage navigator visual layer. |
+| UI Network | [ui-network.md](.claude/agents/ui-subagents/ui-network.md) | `commands/updateFirewall.js` — firewall update UI. |
+| UI Storage | [ui-storage.md](.claude/agents/ui-subagents/ui-storage.md) | UI sections in `commands/storageNavigator.js` — storage navigator visual layer. |
+| UI Janitor | [ui-janitor.md](.claude/agents/ui-subagents/ui-janitor.md) | UI sections in `commands/gcpJanitor.js` — janitor visual layer. |
 
 ## Owned files (full ownership)
 
@@ -63,13 +64,15 @@ process.stdout.write(`\x1b[${this.screen.height}A\x1b[J\x1b[G`);
 |---|---|
 | ANSI helpers | `clearLine()`, `clearLineAbove()`, `overwriteLineAbove(message)`, `writeInline(text)` |
 | Progress | `showProgress(message)` |
-| Formatting | `formatSize(bytes)`, `getDisplayName(fullPath, prefix)` |
+| Formatting | `formatSize(bytes)`, `getDisplayName(fullPath, prefix)`, `formatGreen(text)`, `formatRed(text)`, `formatYellow(text)`, `formatGray(text)`, `formatDate(isoString)`, `formatDaysAgo(isoString)`, `formatSectionHeader(title)`, `showSectionHeader(title)` |
 | Operation log | `showOperationLog(logs)` |
 | Menu choices | `formatUploadChoice()`, `formatCreateFolderChoice()`, `formatTruncationNotice(maxItems)` |
 | Navigation labels | `formatExitLabel()`, `formatBackLabel()`, `formatFolderLabel(name)` |
 | Messages | `showError(message)`, `showInfo(message)`, `showSuccess(message)`, `showWarning(message)` |
 
 ## Loading indicator pattern
+
+`showProgress` writes inline without leading `\n` — callers must ensure the cursor is on a new line before calling it.
 
 ```javascript
 ui.showProgress("Listing /");
@@ -100,3 +103,4 @@ ui.clearLine();  // Clear after done.
 - Call GCP SDK methods (Backend territory).
 - Add new inquirer prompts or change prompt types (UX territory).
 - Use `console.log` for inline status updates that need cursor management; use `process.stdout.write` instead.
+- Start output strings with `\n` — messages must end with `\n`, never start with `\n`.

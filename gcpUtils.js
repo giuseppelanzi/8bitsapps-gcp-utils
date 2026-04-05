@@ -7,6 +7,10 @@ const { listConfigurations } = require("./utils/configLoader.js");
 const commands = require("./commands/index.js");
 const ListWithEscapePrompt = require("./utils/prompts/listWithEscape.js");
 const { checkForUpdates } = require("./utils/updateChecker.js");
+const {
+  writeInline, formatGray, blankLine,
+  showError, showWarning, showInfo, showSuccess
+} = require("./utils/ui.js");
 //
 const packageJson = require("./package.json");
 const boxWidth = 71;
@@ -47,7 +51,7 @@ async function showConfigMenu() {
   const configs = await listConfigurations();
   //
   if (configs.length === 0) {
-    console.error(`No configuration found in ${getConfigurationsDir()}/.`);
+    showError(`No configuration found in ${getConfigurationsDir()}/.`);
     return null;
   }
   //
@@ -93,7 +97,7 @@ async function waitForKeypress() {
     }
     process.stdin.resume();
     //
-    console.log(chalk.gray("Press ENTER or ESC to continue..."));
+    writeInline(formatGray("Press ENTER or ESC to continue...") + "\n");
     //
     process.stdin.once("keypress", (_str, _key) => {
       if (process.stdin.isTTY) {
@@ -110,7 +114,7 @@ async function waitForKeypress() {
  */
 function showBanner() {
   const mode = isLocalMode() ? "local" : "global";
-  console.log(
+  writeInline(
     `${chalk.hex("#F77B00")("=".repeat(boxWidth))}
 ${chalk.hex("#FFFFFF")("       █     █    ")}   |
 ${chalk.hex("#ffff00")("        █   █     ")}   |
@@ -122,6 +126,7 @@ ${chalk.hex("#F77B00")("    █  ███████  █ ")}   |    Support u
 ${chalk.hex("#E73100")("        █   █     ")}   |
 ${chalk.hex("#E73100")("       ██   ██    ")}   |    ${chalk.gray(`Mode:${mode}`)}
 ${chalk.hex("#F77B00")("_".repeat(boxWidth))}\n`);
+  blankLine();
 }
 //
 /**
@@ -137,10 +142,11 @@ function showUpdateNotification(updateInfo) {
   const cmd = `npm install -g ${packageJson.name}`;
   const sudoWrn = "(sudo might be required)";
   //
-  console.log(chalk.white(`  ${msg}`));
-  console.log(chalk.gray(`  Run: ${chalk.cyan(cmd)}`));
-  console.log(chalk.gray(`       ${chalk.cyan(sudoWrn)}`));
-  console.log(chalk.hex("#FFCE00")("_".repeat(boxWidth) + "\n"));
+  writeInline(chalk.white(`  ${msg}`) + "\n");
+  writeInline(chalk.gray(`  Run: ${chalk.cyan(cmd)}`) + "\n");
+  writeInline(chalk.gray(`       ${chalk.cyan(sudoWrn)}`) + "\n");
+  writeInline(chalk.hex("#FFCE00")("_".repeat(boxWidth)) + "\n");
+  blankLine();
 }
 //
 /**
@@ -154,8 +160,9 @@ async function main() {
   //
   // Check if initialized.
   if (!(await isInitialized())) {
-    console.log(chalk.yellow("Configuration not found."));
-    console.log(`Run ${chalk.cyan("gcpUtils")} after initialization to use the tool.\n`);
+    showWarning("Configuration not found.");
+    writeInline(`Run ${chalk.cyan("gcpUtils")} after initialization to use the tool.\n`);
+    blankLine();
     //
     const { shouldInit } = await inquirer.prompt([{
       type: "confirm",
@@ -196,21 +203,22 @@ async function main() {
     //
     // ESC pressed in main menu - exit.
     if (cmdName === null) {
-      console.log("Goodbye!");
+      showInfo("Goodbye!");
       return;
     }
     //
     if (cmdName === "init") {
       const initCmd = commands.find(c => c.name === "init");
       await initCmd.execute();
-      console.log("\n");
+      blankLine();
+      blankLine();
       await waitForKeypress();
       continue;
     }
     //
     const cmd = commands.find(c => c.name === cmdName);
     if (!cmd) {
-      console.error(`Command not found: ${cmdName}`);
+      showError(`Command not found: ${cmdName}`);
       continue;
     }
     //
@@ -221,13 +229,18 @@ async function main() {
       continue;
     }
     //
-    console.log(`Running: ${cmd.description} with config: ${configName}`);
+    blankLine();
+    showInfo(`Running: ${cmd.description} with config: ${configName}`);
     //
     try {
       await cmd.execute(configName);
-      console.log("\nCompleted.\n");
+      blankLine();
+      showSuccess("Completed.");
+      blankLine();
     } catch (err) {
-      console.error(`\nError: ${err.message}\n`);
+      blankLine();
+      showError(`Error: ${err.message}`);
+      blankLine();
     }
     await waitForKeypress();
   }

@@ -10,6 +10,10 @@ const SETTINGS_FILE = "settings.json";
 const defaultSettings = {
   storage: {
     maxItems: 30
+  },
+  janitor: {
+    maxItems: 50,
+    stoppedVmThresholdDays: 30
   }
 };
 //
@@ -46,6 +50,10 @@ function getSettings() {
     storage: {
       ...defaultSettings.storage,
       ...userSettings.storage
+    },
+    janitor: {
+      ...defaultSettings.janitor,
+      ...userSettings.janitor
     }
   };
 }
