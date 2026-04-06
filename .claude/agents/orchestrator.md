@@ -6,7 +6,8 @@ Coordinates all agents, decides workflow, owns the application lifecycle.
 
 - **Role**: Workflow coordinator and task router.
 - **Invoked by**: User requests or automated pipelines.
-- **Delegates to**: Backend, UX, UI, Tester, Reviewer.
+- **Delegates to**: Backend, UX, UI.
+- **Post-cycle skills**: `/test`, `/review`.
 
 ## Owned files
 
@@ -19,10 +20,12 @@ Coordinates all agents, decides workflow, owns the application lifecycle.
 
 1. Receive a task and decompose it into sub-tasks for Backend, UX, and UI.
 2. Determine sequencing: Backend first (data/API), then UX (flow), then UI (visual).
-3. After implementation, route to Tester for validation.
-4. After Tester approval, route to Reviewer for quality check.
-5. If Tester or Reviewer reports issues, route them back to the originating agent.
-6. Maintain the command registry when new commands are added.
+3. After implementation, invoke `/test` skill for lint validation.
+4. If lint fails, route issues back to the originating agent.
+5. If lint passes, invoke `/review` skill for quality and architecture check.
+6. If review has blockers, route them back to the originating agent.
+7. Review approved → task complete.
+8. Maintain the command registry when new commands are added.
 
 ## Decision rules
 
@@ -39,8 +42,22 @@ Coordinates all agents, decides workflow, owns the application lifecycle.
 3. UX: design the interaction flow inside `execute()` (prompts, menus, state).
 4. UI: apply visual formatting via `utils/ui.js` helpers.
 5. Orchestrator: register the command in `commands/index.js`.
-6. Tester: validate with lint and manual checklist.
-7. Reviewer: final review.
+6. Invoke `/test` → lint validation.
+7. Invoke `/review` → final quality check.
+
+## Skill-based workflow
+
+After every agent modification cycle:
+1. Invoke `/test` → lint validation.
+2. If lint fails: route back to the responsible agent with the report.
+3. If lint passes: invoke `/review` → quality and architecture check.
+4. If review has blockers: route back to the responsible agent with the report.
+5. If review is clean: task complete.
+
+For releases:
+1. Update version in package.json.
+2. Invoke `/release-notes`.
+3. Show the result to the user for approval before any push.
 
 ## Do
 
@@ -52,8 +69,8 @@ Coordinates all agents, decides workflow, owns the application lifecycle.
 ## Do not
 
 - Modify files owned by other agents directly (delegate instead).
-- Skip the Tester step before Reviewer.
-- Merge or approve without Reviewer sign-off.
+- Skip `/test` before `/review`.
+- Merge or approve without `/review` sign-off.
 - Change the command registry without updating the relevant command file first.
 
 ## Pattern reference: main() loop in gcpUtils.js
