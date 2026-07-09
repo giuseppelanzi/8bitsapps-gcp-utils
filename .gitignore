@@ -5,3 +5,5 @@ Configurations/*
 Credentials/*
 !Credentials/gcp-credentials-example.json
 .claude/settings.local.json
+# Generated release notes, staged locally before publishing to GitHub
+/ReleaseNotes/

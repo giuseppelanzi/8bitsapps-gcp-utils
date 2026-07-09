@@ -68,10 +68,15 @@ Start the body at the first `##` heading, with no title line above it. GitHub
 renders the release title over the body already, so an `# ...` heading there
 would show up twice.
 
-Save the result to `.git/RELEASE_NOTES_<version>.md`, where `<version>` is the
-version being released — `.git/RELEASE_NOTES_2.0.0.md`. Anything under `.git/`
-is never tracked. The filename carries the version so that writing the notes of
-an old release cannot clobber the notes of one still in preparation.
+Save the result to `ReleaseNotes/RELEASE_NOTES_<version>.md`, where `<version>`
+is the version being released — `ReleaseNotes/RELEASE_NOTES_2.0.0.md`. The
+directory is gitignored, so the notes never reach a commit; they live on GitHub
+instead. Writing the file creates the directory when it is missing, which it
+will be on a fresh clone. The filename carries the version so that writing the
+notes of an old release cannot clobber the notes of one still in preparation.
+
+Being gitignored, these files are fair game for `git clean -xfd`. Do not treat
+them as durable: publish, or copy the text out.
 
 If that file already exists, do not overwrite it blindly. Read it, show the
 user what is already there, and ask whether to replace it or to keep it and
@@ -104,7 +109,7 @@ Only after that go-ahead, and only for the case you named in step 2.
 If a release for the tag exists, update it rather than creating a duplicate:
 
 ```
-gh release edit <tag> --notes-file .git/RELEASE_NOTES_<version>.md
+gh release edit <tag> --notes-file ReleaseNotes/RELEASE_NOTES_<version>.md
 ```
 
 If the release turns out to be published and step 2 did not name that case —
@@ -114,7 +119,7 @@ hold covers a draft, not a live rewrite.
 If no release exists for the tag, create it as a draft:
 
 ```
-gh release create <tag> --title "v<tag>" --notes-file .git/RELEASE_NOTES_<version>.md --draft
+gh release create <tag> --title "v<tag>" --notes-file ReleaseNotes/RELEASE_NOTES_<version>.md --draft
 ```
 
 Tag names in this repo carry no prefix (`2.0.0`); release titles do (`v2.0.0`).
