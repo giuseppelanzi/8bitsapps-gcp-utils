@@ -121,6 +121,9 @@ Tag names in this repo carry no prefix (`2.0.0`); release titles do (`v2.0.0`).
 If the tag does not exist on the remote yet, add `--target <commit>` so gh
 creates it at the right commit.
 
-The release stays a draft — never pass `--latest`, and never run
-`gh release edit --draft=false`. Print the release URL and let the user review
-and publish it themselves on GitHub.
+Never change a release's published state. A draft stays a draft: do not pass
+`--latest`, and do not run `gh release edit --draft=false`. A release that was
+already published stays published — editing its notes must not also promote or
+demote it. Turning a draft live is the user's job, on GitHub.
+
+Finally, print the release URL.
