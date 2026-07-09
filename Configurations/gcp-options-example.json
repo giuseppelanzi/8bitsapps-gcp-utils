@@ -1,5 +1,10 @@
 {
-  "credentialsFile": "gcp-credentials-example.json",
+  "auth": {
+    "identity": "example",
+    "account": "you@example.com",
+    "impersonateServiceAccount": "",
+    "quotaProject": "YOUR_PROJECT_ID"
+  },
   "defaultProjectId": "YOUR_PROJECT_ID",
   "defaultFirewallRule": "YOUR_FIREWALL_RULE_NAME",
   "defaultFixedIPAddresses": [

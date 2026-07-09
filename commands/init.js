@@ -13,6 +13,7 @@ const command = {
     const configDir = getGlobalConfigDir();
     const configurationsDir = path.join(configDir, "configurations");
     const credentialsDir = path.join(configDir, "credentials");
+    const gcloudDir = path.join(configDir, "gcloud");
     //
     ui.showInfo("Initializing gcp-utils configuration...");
     console.log(`Config directory: ${configDir}`);
@@ -20,10 +21,15 @@ const command = {
     // Create directories if they don't exist.
     await fs.mkdir(configurationsDir, { recursive: true });
     await fs.mkdir(credentialsDir, { recursive: true });
+    await fs.mkdir(gcloudDir, { recursive: true });
     //
     // Create example configuration file.
     const exampleConfig = {
-      credentialsFile: "gcp-credentials-example.json",
+      auth: {
+        identity: "example",
+        account: "you@example.com",
+        quotaProject: "YOUR_PROJECT_ID"
+      },
       defaultProjectId: "YOUR_PROJECT_ID",
       defaultFirewallRule: "YOUR_FIREWALL_RULE_NAME",
       defaultFixedIPAddresses: ["8.8.8.8/32"],
@@ -39,11 +45,13 @@ const command = {
       ui.showSuccess(`Created: ${exampleConfigPath}`);
     }
     //
-    ui.showInfo("\nSetup complete!");
-    console.log("\nNext steps:");
-    console.log(`1. Add your GCP credentials JSON to: ${credentialsDir}/`);
-    console.log(`2. Edit configuration files in: ${configurationsDir}/`);
-    console.log("3. Run: gcpUtils");
+    ui.blankLine();
+    ui.showInfo("Setup complete!");
+    ui.blankLine();
+    ui.showInfo("Next steps:");
+    ui.writeInline(`1. Edit configuration files in: ${configurationsDir}/\n`);
+    ui.writeInline("2. Run gcpUtils, pick \"Manage authentication\", then Login.\n");
+    ui.writeInline("3. Run gcpUtils and use any command.\n");
   }
 };
 //

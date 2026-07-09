@@ -1,13 +1,13 @@
 const axios = require("axios");
 const compute = require("@google-cloud/compute");
 const fs = require("fs/promises");
-const { getConfigPath, getCredentialsPath } = require("../utils/paths.js");
+const { getConfigPath } = require("../utils/paths.js");
+const { buildClientOptions } = require("../utils/gcpAuth.js");
 
 class Network {
   constructor(configName) {
     this.configurationName = configName;
     this.configuration = null;
-    this.credentials = null;
     this.computeClient = null;
   }
 
@@ -21,18 +21,11 @@ class Network {
     const configFileName = getConfigPath(this.configurationName);
     this.configuration = JSON.parse(await fs.readFile(configFileName, "utf8"));
     //
-    const credentialsFileName = getCredentialsPath(this.configuration.credentialsFile);
-    this.credentials = JSON.parse(await fs.readFile(credentialsFileName, "utf8"));
-    //
-    this.computeClient = new compute.FirewallsClient({
-      credentials: this.credentials,
-      projectId: this.configuration.defaultProjectId
-    });
+    this.computeClient = new compute.FirewallsClient(buildClientOptions(this.configuration));
   }
 
   unloadConfiguration() {
     this.configuration = null;
-    this.credentials = null;
     this.computeClient = null;
   }
 

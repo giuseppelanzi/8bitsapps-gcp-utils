@@ -5,6 +5,9 @@ const fs = require("fs");
 const APP_NAME = "8bitsapps-gcp-utils";
 const LOCAL_CONFIG_DIR = "Configurations";
 const LOCAL_CREDS_DIR = "Credentials";
+const GCLOUD_DIR = "gcloud";
+const ADC_FILE = "application_default_credentials.json";
+const IDENTITY_PATTERN = /^[A-Za-z0-9._-]+$/;
 //
 /**
  * Determines if local mode should be used.
@@ -50,6 +53,40 @@ function getCredentialsDir() {
 }
 //
 /**
+ * Validates an auth identity name used as a directory name.
+ * @param {string} identity - Identity name.
+ * @throws {Error} If the identity is missing or would escape its parent directory.
+ */
+function assertValidIdentity(identity) {
+  if (!identity || !IDENTITY_PATTERN.test(identity) || identity === "." || identity === "..") {
+    throw new Error(`Invalid auth identity "${identity}". Use letters, digits, dot, dash or underscore.`);
+  }
+}
+//
+/**
+ * Returns the gcloud configuration directory for an identity.
+ * Used as CLOUDSDK_CONFIG so every identity keeps its own credentials.
+ * @param {string} identity - Identity name.
+ * @returns {string} Absolute path to the gcloud configuration directory.
+ */
+function getGcloudDir(identity) {
+  assertValidIdentity(identity);
+  if (isLocalMode()) {
+    return path.join(process.cwd(), LOCAL_CREDS_DIR, GCLOUD_DIR, identity);
+  }
+  return path.join(getGlobalConfigDir(), GCLOUD_DIR, identity);
+}
+//
+/**
+ * Returns the path to the Application Default Credentials file of an identity.
+ * @param {string} identity - Identity name.
+ * @returns {string} Absolute path to the ADC file.
+ */
+function getAdcPath(identity) {
+  return path.join(getGcloudDir(identity), ADC_FILE);
+}
+//
+/**
  * Returns the full path to a configuration file.
  * @param {string} configName - Configuration name.
  * @returns {string} Absolute path to configuration file.
@@ -82,6 +119,8 @@ module.exports = {
   getGlobalConfigDir,
   getConfigurationsDir,
   getCredentialsDir,
+  getGcloudDir,
+  getAdcPath,
   getConfigPath,
   getCredentialsPath,
   getExportPath

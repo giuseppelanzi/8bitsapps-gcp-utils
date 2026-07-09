@@ -2,8 +2,9 @@
 const fs = require("fs");
 const inquirer = require("inquirer");
 const chalk = require("chalk");
-const { isLocalMode, getConfigurationsDir } = require("./utils/paths.js");
+const { isLocalMode, getConfigurationsDir, getConfigPath } = require("./utils/paths.js");
 const { listConfigurations } = require("./utils/configLoader.js");
+const { describeAuthError, describeIdentityMismatch, isLegacyKeyAuth } = require("./utils/gcpAuth.js");
 const commands = require("./commands/index.js");
 const ListWithEscapePrompt = require("./utils/prompts/listWithEscape.js");
 const { checkForUpdates } = require("./utils/updateChecker.js");
@@ -69,6 +70,29 @@ async function showConfigMenu() {
   }]);
   //
   return selected;
+}
+//
+/**
+ * Warns about deprecated credentials or credentials that contradict the configuration.
+ * @param {string} configName - Selected configuration name.
+ */
+async function warnOnAuthIssues(configName) {
+  try {
+    const configuration = JSON.parse(await fs.promises.readFile(getConfigPath(configName), "utf8"));
+    if (isLegacyKeyAuth(configuration)) {
+      showWarning(`Configuration "${configName}" uses a static service account key.`);
+      showWarning("Migrate to \"auth.identity\" and delete the key from the GCP console.");
+      blankLine();
+      return;
+    }
+    const mismatch = describeIdentityMismatch(configuration);
+    if (mismatch) {
+      showWarning(mismatch);
+      blankLine();
+    }
+  } catch {
+    // A broken configuration surfaces later, with a better message.
+  }
 }
 //
 /**
@@ -231,6 +255,8 @@ async function main() {
     //
     blankLine();
     showInfo(`Running: ${cmd.description} with config: ${configName}`);
+    blankLine();
+    await warnOnAuthIssues(configName);
     //
     try {
       await cmd.execute(configName);
@@ -240,6 +266,10 @@ async function main() {
     } catch (err) {
       blankLine();
       showError(`Error: ${err.message}`);
+      const authHint = describeAuthError(err);
+      if (authHint) {
+        showWarning(authHint);
+      }
       blankLine();
     }
     await waitForKeypress();

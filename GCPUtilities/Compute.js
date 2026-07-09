@@ -1,6 +1,7 @@
 const compute = require("@google-cloud/compute");
 const fs = require("fs/promises");
-const { getConfigPath, getCredentialsPath } = require("../utils/paths.js");
+const { getConfigPath } = require("../utils/paths.js");
+const { buildClientOptions } = require("../utils/gcpAuth.js");
 //
 // Suppress the AutopaginateTrueWarning emitted by @google-cloud/compute
 // when using async paging methods (aggregatedListAsync, listAsync).
@@ -19,7 +20,6 @@ class Compute {
   constructor(configName) {
     this.configurationName = configName;
     this.configuration = null;
-    this.credentials = null;
     this.instancesClient = null;
     this.disksClient = null;
     this.snapshotsClient = null;
@@ -42,13 +42,7 @@ class Compute {
     const configFileName = getConfigPath(this.configurationName);
     this.configuration = JSON.parse(await fs.readFile(configFileName, "utf8"));
     //
-    const credentialsFileName = getCredentialsPath(this.configuration.credentialsFile);
-    this.credentials = JSON.parse(await fs.readFile(credentialsFileName, "utf8"));
-    //
-    const clientOptions = {
-      credentials: this.credentials,
-      projectId: this.configuration.defaultProjectId
-    };
+    const clientOptions = buildClientOptions(this.configuration);
     this.instancesClient = new compute.InstancesClient(clientOptions);
     this.disksClient = new compute.DisksClient(clientOptions);
     this.snapshotsClient = new compute.SnapshotsClient(clientOptions);
@@ -61,7 +55,6 @@ class Compute {
    */
   unloadConfiguration() {
     this.configuration = null;
-    this.credentials = null;
     this.instancesClient = null;
     this.disksClient = null;
     this.snapshotsClient = null;

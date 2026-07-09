@@ -1,12 +1,12 @@
 const fs = require("fs/promises");
 const { Storage: GoogleCloudStorage } = require("@google-cloud/storage");
-const { getConfigPath, getCredentialsPath } = require("../utils/paths.js");
+const { getConfigPath } = require("../utils/paths.js");
+const { buildClientOptions } = require("../utils/gcpAuth.js");
 
 class Storage {
   constructor(configName) {
     this.configurationName = configName;
     this.configuration = null;
-    this.credentials = null;
     this.storage = null;
   }
 
@@ -20,18 +20,11 @@ class Storage {
     const configFileName = getConfigPath(this.configurationName);
     this.configuration = JSON.parse(await fs.readFile(configFileName, "utf8"));
     //
-    const credentialsFileName = getCredentialsPath(this.configuration.credentialsFile);
-    this.credentials = JSON.parse(await fs.readFile(credentialsFileName, "utf8"));
-    //
-    this.storage = new GoogleCloudStorage({
-      credentials: this.credentials,
-      projectId: this.configuration.defaultProjectId
-    });
+    this.storage = new GoogleCloudStorage(buildClientOptions(this.configuration));
   }
 
   unloadConfiguration() {
     this.configuration = null;
-    this.credentials = null;
     this.storage = null;
   }
 

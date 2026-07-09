@@ -51,7 +51,6 @@ class ServiceName {
   constructor(configName) {
     this.configurationName = configName;
     this.configuration = null;
-    this.credentials = null;
     this.client = null;  // SDK client.
   }
   //
@@ -59,12 +58,13 @@ class ServiceName {
     if (this.configuration) {
       return; // Already loaded.
     }
-    // Load from paths.js, parse JSON, initialize SDK client.
+    // Load config from paths.js, then initialize the SDK client with
+    // buildClientOptions() from utils/gcpAuth.js, which resolves the
+    // credentials. Never read a credentials file here.
   }
   //
   unloadConfiguration() {
     this.configuration = null;
-    this.credentials = null;
     this.client = null;
   }
   //
@@ -96,6 +96,7 @@ module.exports = {
 
 - Keep GCPUtilities classes free of chalk/UI code; return data, let UI format it.
 - Use `getConfigPath()` and `getCredentialsPath()` from paths.js for all file paths.
+- Authenticate through `buildClientOptions()` in utils/gcpAuth.js; never read a credentials file directly.
 - Handle errors with try/catch and throw meaningful Error objects up to the caller.
 - Add JSDoc comments with `@param` and `@returns` for all public methods.
 - Validate inputs early (check for null/undefined before making SDK calls).

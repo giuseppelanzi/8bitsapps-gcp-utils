@@ -1,5 +1,3 @@
-# Release Notes — v{VERSION}
-
 ## What's new
 - ...
 
@@ -13,4 +11,4 @@
 - ...
 
 ## Migration
-(solo se ci sono breaking changes)
+(only when there are breaking changes)

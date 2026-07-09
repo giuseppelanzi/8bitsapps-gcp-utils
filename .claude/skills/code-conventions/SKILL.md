@@ -1,6 +1,6 @@
 ---
 name: code-conventions
-description: Code conventions for 8bitsapps-gcp-utils. Always apply when writing or modifying JS code.
+description: Code conventions. Always apply when writing or modifying JS code.
 user-invocable: false
 ---
 

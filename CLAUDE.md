@@ -27,4 +27,4 @@ before starting any non-trivial task.
 | `code-conventions` | No (auto) | Code conventions, loaded automatically when writing JS. |
 | `/test` | Yes | Runs lint and produces a summary report. |
 | `/review` | Yes | Code review for quality, style, and architecture. |
-| `/release-notes` | Yes | Generates release notes from git diff between tags. |
+| `/release-notes` | Yes | Generates release notes from git diff between tags, then publishes them as a draft GitHub release once you confirm. |
