@@ -22,6 +22,7 @@ Note: the network/firewall command (`updateFirewall.js`) has no UX interaction â
 | File | Description |
 |---|---|
 | `utils/prompts/listWithEscape.js` | Custom Inquirer prompt with ESC, back arrow, and delete key support. |
+| `utils/prompts/filterableList.js` | List prompt with incremental type-to-filter and load-more pagination (ANSI escape sequences inside it are UI territory). |
 
 ## Owned sections in shared files
 
@@ -50,6 +51,29 @@ Note: the network/firewall command (`updateFirewall.js`) has no UX interaction â
 Configuration options:
 - `enableBack` (boolean): Controls whether left arrow is active.
 - `deleteFilter` (function): `(value) => boolean`, controls which items can be deleted.
+
+## filterableList contract
+
+Used for long, searchable listings (storage navigation, janitor inventories). Differences from listWithEscape:
+
+| Input | Return value | Meaning |
+|---|---|---|
+| Printable keys (digits included) | â€” | Extend the filter term; the list narrows live. No jump-to-index. |
+| ESC with active filter | â€” | Clears the filter, prompt stays open. |
+| ESC with empty filter | `null` | Exit completely. |
+| Left arrow | `{ action: "back" }` | Only with an empty filter; ignored otherwise. |
+| DEL key | `{ action: "delete", value }` | Only when `deleteFilter` is provided and accepts the value; ignored otherwise (stricter than listWithEscape). |
+| Enter on `Load more` | â€” | Widens the window by `pageStep`, prompt stays open. |
+| Enter key | choice `value` | Normal selection. |
+
+Configuration options:
+- `source` (array): filterable items `{ name, value, search }`, `search` already lowercase.
+- `footer` (array): fixed rows (choices or separators), never filtered nor counted in the window.
+- `pageWindow` / `pageStep` (numbers): initial window size and load-more increment.
+- `enableBack` (boolean): as in listWithEscape, but only honored with an empty filter.
+- `deleteFilter` (function): as in listWithEscape, but DEL is inert when it is absent.
+- `state` (object): out-param; receives `state.filterTerm` on every rebuild (used to replay the filter, e.g. CSV export).
+- `formatLoadMore` / `noMatchesText` (functions): injected by callers from `utils/ui.js`, so the prompt imports no chalk.
 
 ## Menu prompt pattern
 

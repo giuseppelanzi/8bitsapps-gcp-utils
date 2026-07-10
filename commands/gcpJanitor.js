@@ -2,14 +2,16 @@ const inquirer = require("inquirer");
 const Table = require("cli-table3");
 const Compute = require("../GCPUtilities/Compute.js");
 const ListWithEscapePrompt = require("../utils/prompts/listWithEscape.js");
+const FilterableListPrompt = require("../utils/prompts/filterableList.js");
 const { getSettings } = require("../utils/settings.js");
 const { loadExceptions, isException, addException } = require("../utils/exceptions.js");
 const ui = require("../utils/ui.js");
 const csvExporter = require("../utils/csvExporter.js");
 const paths = require("../utils/paths.js");
 //
-// Register custom prompt.
+// Register custom prompts.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
+inquirer.registerPrompt("filterableList", FilterableListPrompt);
 //
 // --- Domain-specific formatting (janitor knowledge stays here, not in ui.js). ---
 //
@@ -96,51 +98,39 @@ async function showInventoryMenu() {
 }
 //
 /**
- * Prompts for a name filter substring.
- * @param {string} resourceType - Resource type label.
- * @returns {Promise<string>} Filter string (empty means show all).
+ * Shows VM instances as a live-filterable list.
+ * @param {Array} instances - All instances.
+ * @param {{maxItems: number, pageStep: number}} options - Window options.
+ * @returns {Promise<{selected: string|null|{action: string}, filterTerm: string}>} Selection and active filter term.
  */
-async function promptNameFilter(resourceType) {
-  const { filter } = await inquirer.prompt([{
-    type: "input",
-    name: "filter",
-    message: ui.formatGray(`Filter ${resourceType} by name (leave empty for all):`)
-  }]);
-  //
-  return (filter || "").trim().toLowerCase();
-}
-//
-/**
- * Shows VM instances as a selectable list.
- * @param {Array} instances - Filtered instances.
- * @param {number} maxItems - Max items to display.
- * @returns {Promise<string|null|{action: string}>} Selected VM name or null/back.
- */
-async function showVMList(instances, maxItems) {
-  const truncated = instances.length > maxItems;
-  const displayInstances = instances.slice(0, maxItems);
-  //
-  const choices = displayInstances.map((inst, i) => ({
+async function showVMList(instances, options) {
+  const state = {};
+  const source = instances.map((inst, i) => ({
     name: `${i + 1}. ${inst.name} (${inst.machineType}) [${inst.status}] ${inst.zone}`,
-    value: inst.name
+    value: inst.name,
+    search: inst.name.toLowerCase()
   }));
   //
-  if (truncated) {
-    choices.push(new inquirer.Separator(ui.formatTruncationNotice(maxItems)));
-  }
-  //
-  choices.push(new inquirer.Separator("─"));
-  choices.push({ name: ui.formatGreen("Export filtered VMs to CSV"), value: "__export_csv__" });
+  const footer = [
+    new inquirer.Separator("─"),
+    { name: ui.formatGreen("Export filtered VMs to CSV"), value: "__export_csv__" }
+  ];
   //
   const { selected } = await inquirer.prompt([{
-    type: "listWithEscape",
+    type: "filterableList",
     name: "selected",
-    message: "Select VM (\u2190 back, ESC to exit):",
-    choices,
-    enableBack: true
+    message: "Select VM (type to filter, \u2190 back, ESC to exit):",
+    source,
+    footer,
+    pageWindow: options.maxItems,
+    pageStep: options.pageStep,
+    enableBack: true,
+    state,
+    formatLoadMore: ui.formatLoadMore,
+    noMatchesText: ui.formatNoMatches
   }]);
   //
-  return selected;
+  return { selected, filterTerm: state.filterTerm || "" };
 }
 //
 /**
@@ -170,49 +160,59 @@ async function showDiskListForVM(attachedDisks) {
 }
 //
 /**
- * Shows a menu to select a zombie resource to mark as exception.
+ * Shows a filterable menu to select a zombie resource to mark as exception.
+ * The type tag is part of the search text, so typing "disk" or "vm" filters by kind.
  * @param {{unattachedDisks: Array, stoppedVMs: Array, orphanedSnapshots: Array, unusedIPs: Array}} zombies - Zombie data.
+ * @param {{maxItems: number, pageStep: number}} options - Window options.
  * @returns {Promise<{resourceType: string, resourceName: string, zone: string}|null|{action: string}>}
  */
-async function showZombieActionMenu(zombies) {
-  const choices = [];
+async function showZombieActionMenu(zombies, options) {
+  const source = [];
   let idx = 1;
   //
   for (const d of zombies.unattachedDisks) {
-    choices.push({
+    source.push({
       name: `${idx++}. [Disk] ${d.name} (${d.sizeGb} GB, ${d.zone})`,
-      value: { resourceType: "disk", resourceName: d.name, zone: d.zone }
+      value: { resourceType: "disk", resourceName: d.name, zone: d.zone },
+      search: `[disk] ${d.name}`.toLowerCase()
     });
   }
   for (const vm of zombies.stoppedVMs) {
-    choices.push({
+    source.push({
       name: `${idx++}. [VM] ${vm.name} (${vm.machineType}, ${vm.zone})`,
-      value: { resourceType: "vm", resourceName: vm.name, zone: vm.zone }
+      value: { resourceType: "vm", resourceName: vm.name, zone: vm.zone },
+      search: `[vm] ${vm.name}`.toLowerCase()
     });
   }
   for (const s of zombies.orphanedSnapshots) {
-    choices.push({
+    source.push({
       name: `${idx++}. [Snapshot] ${s.name} (from ${s.sourceDisk})`,
-      value: { resourceType: "snapshot", resourceName: s.name, zone: "" }
+      value: { resourceType: "snapshot", resourceName: s.name, zone: "" },
+      search: `[snapshot] ${s.name}`.toLowerCase()
     });
   }
   for (const a of zombies.unusedIPs) {
-    choices.push({
+    source.push({
       name: `${idx++}. [IP] ${a.address} (${a.name}, ${a.region})`,
-      value: { resourceType: "ip", resourceName: a.name, zone: a.region }
+      value: { resourceType: "ip", resourceName: a.name, zone: a.region },
+      search: `[ip] ${a.name}`.toLowerCase()
     });
   }
   //
-  if (choices.length === 0) {
+  if (source.length === 0) {
     return { action: "back" };
   }
   //
   const { selected } = await inquirer.prompt([{
-    type: "listWithEscape",
+    type: "filterableList",
     name: "selected",
-    message: "Select resource to mark as exception (\u2190 back, ESC to exit):",
-    choices,
-    enableBack: true
+    message: "Select resource to mark as exception (type to filter, \u2190 back, ESC to exit):",
+    source,
+    pageWindow: options.maxItems,
+    pageStep: options.pageStep,
+    enableBack: true,
+    formatLoadMore: ui.formatLoadMore,
+    noMatchesText: ui.formatNoMatches
   }]);
   //
   return selected;
@@ -313,82 +313,118 @@ function renderSnapshotsTable(snapshots, title) {
 }
 //
 /**
- * Renders the global disks table.
+ * Shows the global disks as a filterable, columnar list.
+ * Selecting a row simply returns to the inventory menu.
  * @param {Array} disks - All disks.
  * @param {Compute} computeInstance - Compute instance for helper methods.
- * @param {number} maxItems - Max rows.
+ * @param {{maxItems: number, pageStep: number}} options - Window options.
+ * @returns {Promise<string|null|{action: string}>} Selection result.
  */
-function renderDisksTable(disks, computeInstance, maxItems) {
-  const truncated = disks.length > maxItems;
-  const displayDisks = disks.slice(0, maxItems);
-  //
-  const table = new Table({
-    head: ["Name", "Size (GB)", "Type", "Status", "Attached To"],
-    style: { head: ["cyan"] }
-  });
-  displayDisks.forEach(d => {
+async function showDiskInventory(disks, computeInstance, options) {
+  const source = disks.map((d) => {
     const attached = computeInstance.extractAttachedVMName(d.users);
     const statusDisplay = d.users.length > 0 ? "attached" : "unattached";
-    table.push([d.name, d.sizeGb, d.type, formatStatusColor(statusDisplay), attached]);
+    return {
+      name: ui.formatColumns(
+        [d.name, `${d.sizeGb} GB`, d.type, formatStatusColor(statusDisplay), attached],
+        [32, 8, 14, 10, 20]
+      ),
+      value: d.name,
+      search: d.name.toLowerCase()
+    };
   });
-  console.log(table.toString());
   //
-  if (truncated) {
-    console.log(ui.formatTruncationNotice(maxItems));
-  }
+  const { selected } = await inquirer.prompt([{
+    type: "filterableList",
+    name: "selected",
+    message: "Persistent Disks (type to filter, \u2190 back, ESC to exit):",
+    source,
+    pageWindow: options.maxItems,
+    pageStep: options.pageStep,
+    enableBack: true,
+    formatLoadMore: ui.formatLoadMore,
+    noMatchesText: ui.formatNoMatches
+  }]);
+  //
+  return selected;
 }
 //
 /**
- * Renders the global addresses table.
+ * Shows the global addresses as a filterable, columnar list.
+ * Selecting a row simply returns to the inventory menu.
  * @param {Array} addresses - All addresses.
  * @param {Compute} computeInstance - Compute instance for helper methods.
- * @param {number} maxItems - Max rows.
+ * @param {{maxItems: number, pageStep: number}} options - Window options.
+ * @returns {Promise<string|null|{action: string}>} Selection result.
  */
-function renderAddressesTable(addresses, computeInstance, maxItems) {
-  const truncated = addresses.length > maxItems;
-  const displayAddresses = addresses.slice(0, maxItems);
-  //
-  const table = new Table({
-    head: ["IP Address", "Name", "Region", "Type", "Status", "Used By"],
-    style: { head: ["cyan"] }
-  });
-  displayAddresses.forEach(a => {
+async function showAddressInventory(addresses, computeInstance, options) {
+  const source = addresses.map((a) => {
     const usedBy = computeInstance.extractUserName(a.users);
-    table.push([a.address, a.name, a.region, a.addressType, formatStatusColor(a.status), usedBy]);
+    return {
+      name: ui.formatColumns(
+        [a.address, a.name, a.region, a.addressType, formatStatusColor(a.status), usedBy],
+        [16, 26, 14, 10, 10, 20]
+      ),
+      value: a.name,
+      search: a.name.toLowerCase()
+    };
   });
-  console.log(table.toString());
   //
-  if (truncated) {
-    console.log(ui.formatTruncationNotice(maxItems));
-  }
+  const { selected } = await inquirer.prompt([{
+    type: "filterableList",
+    name: "selected",
+    message: "Static IP Addresses (type to filter, \u2190 back, ESC to exit):",
+    source,
+    pageWindow: options.maxItems,
+    pageStep: options.pageStep,
+    enableBack: true,
+    formatLoadMore: ui.formatLoadMore,
+    noMatchesText: ui.formatNoMatches
+  }]);
+  //
+  return selected;
 }
 //
 /**
- * Renders the global snapshots table.
+ * Shows the global snapshots as a filterable, columnar list.
+ * Selecting a row simply returns to the inventory menu.
  * @param {Array} snapshots - All snapshots.
- * @param {number} maxItems - Max rows.
+ * @param {{maxItems: number, pageStep: number}} options - Window options.
+ * @returns {Promise<string|null|{action: string}>} Selection result.
  */
-function renderAllSnapshotsTable(snapshots, maxItems) {
-  const truncated = snapshots.length > maxItems;
-  const displaySnapshots = snapshots.slice(0, maxItems);
+async function showSnapshotInventory(snapshots, options) {
+  const source = snapshots.map((s) => ({
+    name: ui.formatColumns(
+      [s.name, ui.formatDate(s.creationTimestamp), `${s.diskSizeGb} GB`, s.sourceDisk || "-", formatStatusColor(s.status)],
+      [32, 13, 8, 24, 10]
+    ),
+    value: s.name,
+    search: s.name.toLowerCase()
+  }));
   //
-  const table = new Table({
-    head: ["Name", "Creation Date", "Size (GB)", "Source Disk", "Status"],
-    style: { head: ["cyan"] }
-  });
-  displaySnapshots.forEach(s => {
-    table.push([
-      s.name,
-      ui.formatDate(s.creationTimestamp),
-      s.diskSizeGb,
-      s.sourceDisk || "-",
-      formatStatusColor(s.status)
-    ]);
-  });
-  console.log(table.toString());
+  const { selected } = await inquirer.prompt([{
+    type: "filterableList",
+    name: "selected",
+    message: "Snapshots (type to filter, \u2190 back, ESC to exit):",
+    source,
+    pageWindow: options.maxItems,
+    pageStep: options.pageStep,
+    enableBack: true,
+    formatLoadMore: ui.formatLoadMore,
+    noMatchesText: ui.formatNoMatches
+  }]);
   //
-  if (truncated) {
-    console.log(ui.formatTruncationNotice(maxItems));
+  return selected;
+}
+//
+/**
+ * Prints a truncation note when a report section exceeds maxItems.
+ * @param {number} total - Total rows in the section.
+ * @param {number} maxItems - Max rows shown.
+ */
+function showSectionTruncation(total, maxItems) {
+  if (total > maxItems) {
+    ui.showWarning(`(showing first ${maxItems} of ${total}; the full set is in the selection list below)`);
   }
 }
 //
@@ -421,6 +457,7 @@ function renderZombieReport(zombies, maxItems) {
       table.push([i + 1, d.name, d.sizeGb, d.zone, ui.formatDate(d.creationTimestamp)]);
     });
     console.log(table.toString());
+    showSectionTruncation(zombies.unattachedDisks.length, maxItems);
   }
   //
   // 2. Long-stopped VMs.
@@ -435,6 +472,7 @@ function renderZombieReport(zombies, maxItems) {
       table.push([i + 1, vm.name, daysStr, vm.machineType, vm.zone]);
     });
     console.log(table.toString());
+    showSectionTruncation(zombies.stoppedVMs.length, maxItems);
   }
   //
   // 3. Orphaned snapshots.
@@ -448,6 +486,7 @@ function renderZombieReport(zombies, maxItems) {
       table.push([i + 1, s.name, ui.formatDate(s.creationTimestamp), s.diskSizeGb, s.sourceDisk]);
     });
     console.log(table.toString());
+    showSectionTruncation(zombies.orphanedSnapshots.length, maxItems);
   }
   //
   // 4. Unused static IPs.
@@ -461,6 +500,7 @@ function renderZombieReport(zombies, maxItems) {
       table.push([i + 1, a.address, a.name, a.region, a.addressType]);
     });
     console.log(table.toString());
+    showSectionTruncation(zombies.unusedIPs.length, maxItems);
   }
 }
 //
@@ -477,7 +517,9 @@ const command = {
     const computeInstance = new Compute(configName);
     const settings = getSettings();
     const maxItems = settings.janitor.maxItems;
+    const pageStep = settings.janitor.pageStep;
     const thresholdDays = settings.janitor.stoppedVmThresholdDays;
+    const listOptions = { maxItems, pageStep };
     //
     // Cache fetched data to avoid repeated API calls within the session.
     let cachedInstances = null;
@@ -537,17 +579,12 @@ const command = {
           if (inventoryChoice === "vms") {
             // VM hierarchical flow (Level 2).
             while (true) {
-              const nameFilter = await promptNameFilter("VM instances");
-              const filtered = cachedInstances.filter(i =>
-                !nameFilter || i.name.toLowerCase().includes(nameFilter)
-              );
-              //
-              if (filtered.length === 0) {
-                ui.showWarning("No VM instances found matching filter.");
+              if (cachedInstances.length === 0) {
+                ui.showWarning("No VM instances found.");
                 break;
               }
               //
-              const vmChoice = await showVMList(filtered, maxItems);
+              const { selected: vmChoice, filterTerm } = await showVMList(cachedInstances, listOptions);
               //
               if (vmChoice === null) {
                 return; // ESC.
@@ -556,8 +593,17 @@ const command = {
                 break; // Back to inventory menu.
               }
               //
-              // Export filtered VMs to CSV.
+              // Export to CSV: replay the live filter on the full set, so the
+              // export matches exactly what the user was seeing.
               if (vmChoice === "__export_csv__") {
+                const term = filterTerm.toLowerCase();
+                const filtered = cachedInstances.filter(i =>
+                  !term || i.name.toLowerCase().includes(term)
+                );
+                if (filtered.length === 0) {
+                  ui.showWarning("No VM instances match the current filter; nothing to export.");
+                  continue;
+                }
                 ui.showProgress("Resolving machine type details");
                 const mtCache = await computeInstance.resolveMachineTypes(filtered);
                 ui.clearLine();
@@ -619,29 +665,26 @@ const command = {
               }
             }
           } else if (inventoryChoice === "disks") {
-            // Flat disks view.
-            const nameFilter = await promptNameFilter("disks");
-            const filtered = cachedDisks.filter(d =>
-              !nameFilter || d.name.toLowerCase().includes(nameFilter)
-            );
-            ui.showSectionHeader("Persistent Disks");
-            renderDisksTable(filtered, computeInstance, maxItems);
+            // Flat disks view: any row selection returns to the inventory menu.
+            if (cachedDisks.length === 0) {
+              ui.showInfo("No disks found.");
+            } else if (await showDiskInventory(cachedDisks, computeInstance, listOptions) === null) {
+              return; // ESC.
+            }
           } else if (inventoryChoice === "snapshots") {
-            // Flat snapshots view.
-            const nameFilter = await promptNameFilter("snapshots");
-            const filtered = cachedSnapshots.filter(s =>
-              !nameFilter || s.name.toLowerCase().includes(nameFilter)
-            );
-            ui.showSectionHeader("Snapshots");
-            renderAllSnapshotsTable(filtered, maxItems);
+            // Flat snapshots view: any row selection returns to the inventory menu.
+            if (cachedSnapshots.length === 0) {
+              ui.showInfo("No snapshots found.");
+            } else if (await showSnapshotInventory(cachedSnapshots, listOptions) === null) {
+              return; // ESC.
+            }
           } else if (inventoryChoice === "ips") {
-            // Flat IPs view.
-            const nameFilter = await promptNameFilter("static IPs");
-            const filtered = cachedAddresses.filter(a =>
-              !nameFilter || a.name.toLowerCase().includes(nameFilter)
-            );
-            ui.showSectionHeader("Static IP Addresses");
-            renderAddressesTable(filtered, computeInstance, maxItems);
+            // Flat IPs view: any row selection returns to the inventory menu.
+            if (cachedAddresses.length === 0) {
+              ui.showInfo("No static IP addresses found.");
+            } else if (await showAddressInventory(cachedAddresses, computeInstance, listOptions) === null) {
+              return; // ESC.
+            }
           }
         }
         continue;
@@ -689,7 +732,7 @@ const command = {
         //
         if (total > 0) {
           while (true) {
-            const actionChoice = await showZombieActionMenu(zombies);
+            const actionChoice = await showZombieActionMenu(zombies, listOptions);
             //
             if (actionChoice === null) {
               return; // ESC.

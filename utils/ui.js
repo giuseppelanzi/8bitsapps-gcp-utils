@@ -39,6 +39,20 @@ function blankLine() {
   console.log();
 }
 //
+/**
+ * Hides the terminal cursor.
+ */
+function hideCursor() {
+  process.stdout.write("\x1b[?25l");
+}
+//
+/**
+ * Shows the terminal cursor.
+ */
+function showCursor() {
+  process.stdout.write("\x1b[?25h");
+}
+//
 // --- Progress indicators. ---
 //
 /**
@@ -197,12 +211,57 @@ function formatCreateFolderChoice() {
 }
 //
 /**
- * Formats a truncation notice for menus.
- * @param {number} maxItems - Maximum items shown.
+ * Formats the "load more" menu row.
+ * @param {number} shown - Items currently shown.
+ * @param {number} total - Total matching items.
  * @returns {string} Chalk-formatted string.
  */
-function formatTruncationNotice(maxItems) {
-  return chalk.yellow(`(showing first ${maxItems} items)`);
+function formatLoadMore(shown, total) {
+  return chalk.yellow(`▼ Load more (${shown}/${total})`);
+}
+//
+/**
+ * Formats the "no matches" placeholder for filtered lists.
+ * @returns {string} Chalk-formatted string.
+ */
+function formatNoMatches() {
+  return chalk.gray("(no matches)");
+}
+//
+/**
+ * Measures the visible width of a string, skipping ANSI color sequences.
+ * @param {string} text - Text possibly containing chalk colors.
+ * @returns {number} Visible character count.
+ */
+function visibleLength(text) {
+  let length = 0;
+  let inEscape = false;
+  for (const ch of text) {
+    if (inEscape) {
+      if (ch === "m") inEscape = false;
+    } else if (ch === "\x1b") {
+      inEscape = true;
+    } else {
+      length++;
+    }
+  }
+  return length;
+}
+//
+/**
+ * Formats cells into fixed-width columns (padEnd on visible length).
+ * Cells wider than their column are left untruncated.
+ * @param {Array<string|number>} cells - Cell values (may contain chalk colors).
+ * @param {number[]} widths - Column widths.
+ * @returns {string} Single columnar row.
+ */
+function formatColumns(cells, widths) {
+  const padded = cells.map((cell, i) => {
+    const text = String(cell);
+    const padding = (widths[i] || 0) - visibleLength(text);
+    return padding > 0 ? text + " ".repeat(padding) : text;
+  });
+  return padded.join("  ").trimEnd();
 }
 //
 // --- Navigation labels. ---
@@ -273,6 +332,8 @@ module.exports = {
   overwriteLineAbove,
   writeInline,
   blankLine,
+  hideCursor,
+  showCursor,
   // Progress.
   showProgress,
   formatProgress,
@@ -292,7 +353,9 @@ module.exports = {
   // Menu choices.
   formatUploadChoice,
   formatCreateFolderChoice,
-  formatTruncationNotice,
+  formatLoadMore,
+  formatNoMatches,
+  formatColumns,
   // Navigation labels.
   formatExitLabel,
   formatBackLabel,

@@ -40,21 +40,13 @@ Three cli-table3 tables in sequence:
 
 Generic snapshot table used for disk drill-down view.
 
-### `renderDisksTable(disks, computeInstance, maxItems)`
+### Flat inventory rows (inside UX-owned `show*Inventory` functions)
 
-Global flat disks table with status coloring and truncation.
-
-### `renderAddressesTable(addresses, computeInstance, maxItems)`
-
-Global flat addresses table with status coloring and truncation.
-
-### `renderAllSnapshotsTable(snapshots, maxItems)`
-
-Global flat snapshots table with status coloring and truncation.
+The global disks/snapshots/IPs views are filterable lists, not tables: each row is built with `ui.formatColumns(cells, widths)` and keeps status coloring via `formatStatusColor`. UI owns the cell composition and the column widths passed to `formatColumns`.
 
 ### `renderZombieReport(zombies, maxItems)`
 
-Full zombie report: summary line + 4 categorized tables (unattached disks, stopped VMs, orphaned snapshots, unused IPs).
+Full zombie report: summary line + 4 categorized tables (unattached disks, stopped VMs, orphaned snapshots, unused IPs). Each section prints a yellow truncation note via `showSectionTruncation(total, maxItems)` when it exceeds `maxItems`.
 
 ## Table column specifications
 
@@ -67,9 +59,9 @@ Full zombie report: summary line + 4 categorized tables (unattached disks, stopp
 | VM attached disks | #, Name, Size (GB), Type |
 | VM static IPs | IP Address, Type, Status |
 | Disk drill-down snapshots | Name, Creation Date, Size (GB), Source Disk |
-| Global disks | Name, Size (GB), Type, Status, Attached To |
-| Global snapshots | Name, Creation Date, Size (GB), Source Disk, Status |
-| Global IPs | IP Address, Name, Region, Type, Status, Used By |
+| Global disks (filterable list) | Name, Size, Type, Status, Attached To |
+| Global snapshots (filterable list) | Name, Creation Date, Size, Source Disk, Status |
+| Global IPs (filterable list) | IP Address, Name, Region, Type, Status, Used By |
 
 ### Zombie report views (display order by cost impact, highest first)
 
@@ -105,11 +97,12 @@ Unicode borders are the cli-table3 default.
 | `ui.formatGreen(text)` | Status coloring (RUNNING, IN_USE, READY). |
 | `ui.formatRed(text)` | Status coloring (STOPPED, TERMINATED). |
 | `ui.formatYellow(text)` | Status coloring (other), zombie summary. |
-| `ui.formatGray(text)` | Filter prompt labels. |
+| `ui.formatColumns(cells, widths)` | Columnar rows for the filterable inventory lists. |
+| `ui.formatLoadMore(shown, total)` | Yellow "Load more" row in filterable lists. |
+| `ui.formatNoMatches()` | Gray "(no matches)" placeholder in filterable lists. |
 | `ui.formatDate(isoString)` | Timestamp formatting in tables. |
 | `ui.formatDaysAgo(isoString)` | Days-since calculation for stopped VMs. |
 | `ui.showSectionHeader(title)` | Section headers with spacing (brand orange). |
-| `ui.formatTruncationNotice(maxItems)` | Truncation notice for long lists. |
 | `ui.showProgress(message)` | Loading indicators. |
 | `ui.clearLine()` | Clears loading line after operations. |
 | `ui.showError(message)` | Error messages. |

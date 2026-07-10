@@ -9,10 +9,12 @@ const SETTINGS_FILE = "settings.json";
  */
 const defaultSettings = {
   storage: {
-    maxItems: 30
+    maxItems: 30,
+    pageStep: 30
   },
   janitor: {
     maxItems: 50,
+    pageStep: 50,
     stoppedVmThresholdDays: 30
   }
 };

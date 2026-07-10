@@ -2,11 +2,24 @@ const path = require("path");
 const inquirer = require("inquirer");
 const Storage = require("../GCPUtilities/Storage.js");
 const ListWithEscapePrompt = require("../utils/prompts/listWithEscape.js");
+const FilterableListPrompt = require("../utils/prompts/filterableList.js");
 const { getSettings } = require("../utils/settings.js");
 const ui = require("../utils/ui.js");
 //
-// Register custom prompt.
+// Register custom prompts.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
+inquirer.registerPrompt("filterableList", FilterableListPrompt);
+//
+/**
+ * Builds the key hint suffix for the navigation prompt message.
+ * @param {boolean} backEnabled - Whether the back arrow is available.
+ * @returns {string} Hint string.
+ */
+function navigationHint(backEnabled) {
+  return backEnabled
+    ? "(type to filter, ← back, DEL delete, ESC exit)"
+    : "(type to filter, DEL delete, ESC exit)";
+}
 //
 /**
  * Shows bucket selection menu.
@@ -35,76 +48,64 @@ async function selectBucket(buckets) {
 }
 //
 /**
- * Shows folder/file navigation menu.
+ * Shows folder/file navigation menu with incremental filter and load-more.
  * @param {string} bucketName - Current bucket.
  * @param {string} currentPath - Current path prefix.
  * @param {{folders: string[], files: Array<{name: string, size: number}>}} contents - Folder contents.
- * @param {{maxItems: number, backEnabled: boolean}} options - Menu options.
+ * @param {{maxItems: number, pageStep: number, backEnabled: boolean}} options - Menu options.
  * @returns {Promise<{action: string, value: string}|null>} Selected action or null if ESC pressed.
  */
 async function showNavigationMenu(bucketName, currentPath, contents, options) {
-  const { maxItems, backEnabled } = options;
+  const { maxItems, pageStep, backEnabled } = options;
   const displayPath = currentPath || "/";
-  const choices = [];
-  let itemCount = 0;
-  let truncated = false;
+  const source = [];
   //
-  // Add folders (limited by maxItems).
+  // Folders first, then files: the filter runs on the full set, so files can
+  // no longer be starved by a folder-heavy directory.
   for (const folder of contents.folders) {
-    if (itemCount >= maxItems) {
-      truncated = true;
-      break;
-    }
     const displayName = ui.getDisplayName(folder, currentPath);
-    choices.push({
+    source.push({
       name: `[D] ${displayName}`,
-      value: { action: "folder", value: folder }
+      value: { action: "folder", value: folder },
+      search: displayName.toLowerCase()
     });
-    itemCount++;
   }
-  //
-  // Add files (limited by maxItems).
   for (const file of contents.files) {
-    if (itemCount >= maxItems) {
-      truncated = true;
-      break;
-    }
     const displayName = ui.getDisplayName(file.name, currentPath);
     const sizeStr = ui.formatSize(file.size);
-    choices.push({
+    source.push({
       name: `[F] ${displayName} (${sizeStr})`,
-      value: { action: "file", value: file.name }
+      value: { action: "file", value: file.name },
+      search: displayName.toLowerCase()
     });
-    itemCount++;
   }
   //
-  // Add separator and action options.
-  if (choices.length > 0) {
-    choices.push(new inquirer.Separator("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
+  // Fixed action rows: never filtered, never counted in the window.
+  const footer = [];
+  if (source.length > 0) {
+    footer.push(new inquirer.Separator("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
   }
-  if (truncated) {
-    choices.push(new inquirer.Separator(ui.formatTruncationNotice(maxItems)));
-  }
-  choices.push({
+  footer.push({
     name: ui.formatUploadChoice(),
     value: { action: "upload", value: currentPath }
   });
-  choices.push({
+  footer.push({
     name: ui.formatCreateFolderChoice(),
     value: { action: "createFolder", value: currentPath }
   });
   //
-  const message = backEnabled
-    ? `${bucketName}:${displayPath} (\u2190 back, DEL delete, ESC exit)`
-    : `${bucketName}:${displayPath} (DEL delete, ESC exit)`;
-  //
   const { selected } = await inquirer.prompt([{
-    type: "listWithEscape",
+    type: "filterableList",
     name: "selected",
-    message,
-    choices,
+    message: `${bucketName}:${displayPath} ${navigationHint(backEnabled)}`,
+    source,
+    footer,
+    pageWindow: maxItems,
+    pageStep,
     enableBack: backEnabled,
-    deleteFilter: (value) => value?.action === "file" || value?.action === "folder"
+    deleteFilter: (value) => value?.action === "file" || value?.action === "folder",
+    formatLoadMore: ui.formatLoadMore,
+    noMatchesText: ui.formatNoMatches
   }]);
   //
   return selected;
@@ -170,6 +171,7 @@ const command = {
     const storage = new Storage(configName);
     const settings = getSettings();
     const maxItems = settings.storage.maxItems;
+    const pageStep = settings.storage.pageStep;
     //
     // Get available buckets.
     const buckets = await storage.getBuckets();
@@ -211,13 +213,12 @@ const command = {
       //
       // Show navigation menu.
       const backEnabled = pathHistory.length > 1;
-      const result = await showNavigationMenu(bucketName, currentPath, contents, { maxItems, backEnabled });
+      const result = await showNavigationMenu(bucketName, currentPath, contents, { maxItems, pageStep, backEnabled });
       //
       if (result === null) {
         // ESC pressed - exit storage navigator completely.
         const exitDisplayPath = currentPath || "/";
-        const exitHint = backEnabled ? "(\u2190 back, DEL delete, ESC exit)" : "(DEL delete, ESC exit)";
-        ui.overwriteLineAbove(`? ${bucketName}:${exitDisplayPath} ${exitHint} ${ui.formatExitLabel()}`);
+        ui.overwriteLineAbove(`? ${bucketName}:${exitDisplayPath} ${navigationHint(backEnabled)} ${ui.formatExitLabel()}`);
         console.log();
         return;
       }
@@ -225,7 +226,7 @@ const command = {
       if (result.action === "back") {
         // Left arrow pressed - go back one level (only possible when backEnabled is true).
         const backDisplayPath = currentPath || "/";
-        ui.overwriteLineAbove(`? ${bucketName}:${backDisplayPath} (\u2190 back, DEL delete, ESC exit) ${ui.formatBackLabel()}`);
+        ui.overwriteLineAbove(`? ${bucketName}:${backDisplayPath} ${navigationHint(true)} ${ui.formatBackLabel()}`);
         ui.writeInline("\n");
         pathHistory.pop();
         continue;
@@ -270,7 +271,7 @@ const command = {
         const folderDisplayName = ui.getDisplayName(result.value, currentPath);
         const folderDisplayPath = currentPath || "/";
         ui.clearLineAbove();
-        ui.writeInline(`? ${bucketName}:${folderDisplayPath} (\u2190 back, DEL delete, ESC exit) ${ui.formatFolderLabel(folderDisplayName)}\n`);
+        ui.writeInline(`? ${bucketName}:${folderDisplayPath} ${navigationHint(backEnabled)} ${ui.formatFolderLabel(folderDisplayName)}\n`);
         // Enter folder.
         pathHistory.push(result.value);
         break;

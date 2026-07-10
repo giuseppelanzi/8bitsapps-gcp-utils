@@ -105,19 +105,22 @@ class Storage {
     await this.loadConfiguration();
     //
     const bucket = this.storage.bucket(bucketName);
-    const [files] = await bucket.getFiles({
-      prefix: prefix,
-      delimiter: "/",
-      autoPaginate: false
-    });
     //
-    // Get folder prefixes from API response.
-    const [, , apiResponse] = await bucket.getFiles({
-      prefix: prefix,
-      delimiter: "/"
-    });
+    // Manual pagination: a single scan accumulating both files and the
+    // folder prefixes of every page (apiResponse only holds the last page's).
+    const files = [];
+    const folderSet = new Set();
+    let query = { prefix: prefix, delimiter: "/", autoPaginate: false };
+    do {
+      const [pageFiles, nextQuery, apiResponse] = await bucket.getFiles(query);
+      files.push(...pageFiles);
+      for (const p of (apiResponse && apiResponse.prefixes) || []) {
+        folderSet.add(p);
+      }
+      query = nextQuery;
+    } while (query);
     //
-    const folders = apiResponse?.prefixes || [];
+    const folders = [...folderSet];
     //
     // Filter out the prefix itself and get only direct files.
     const directFiles = files

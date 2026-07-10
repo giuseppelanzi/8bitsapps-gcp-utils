@@ -7,3 +7,5 @@ Credentials/*
 .claude/settings.local.json
 # Generated release notes, staged locally before publishing to GitHub
 /ReleaseNotes/
+# Local working notes and analyses, not part of the shipped package
+/_analysis/

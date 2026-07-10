@@ -25,12 +25,13 @@ Owns the interaction flow, navigation state machine, and prompt design for the s
 
 ### `showNavigationMenu(bucketName, currentPath, contents, options)`
 
-- Builds choices from folders and files, limited by `maxItems`.
-- Folders: `[D] displayName` → `{ action: "folder", value: fullPath }`.
-- Files: `[F] displayName (size)` → `{ action: "file", value: fullPath }`.
-- Adds separator, then upload and createFolder actions.
+- `filterableList` prompt: folders and files form a single `source` (filter runs on the full set); `maxItems` is only the initial window, `pageStep` the load-more increment.
+- Folders: `[D] displayName` → `{ action: "folder", value: fullPath }`, `search` on the display name.
+- Files: `[F] displayName (size)` → `{ action: "file", value: fullPath }`, `search` on the display name.
+- Footer (never filtered): separator, then upload and createFolder actions.
 - `enableBack`: true when `pathHistory.length > 1`.
 - `deleteFilter`: only allows delete on file and folder items.
+- Message hint built by `navigationHint(backEnabled)`, reused verbatim by the post-prompt line rewrites in `execute()`.
 - Returns `{action, value}|null`.
 
 ### `promptUploadPath()`
@@ -94,7 +95,7 @@ while (true) {
 - Use `enableBack: false` for bucket selection, `enableBack: true` for nested navigation.
 - Use `deleteFilter` to limit which items can be deleted.
 - Validate input in prompts (e.g., folder name cannot contain `/`).
-- Follow the listWithEscape contract from [ux.md](.claude/agents/ux.md) (parent agent).
+- Follow the listWithEscape and filterableList contracts from [ux.md](.claude/agents/ux.md) (parent agent).
 
 ## Do not
 

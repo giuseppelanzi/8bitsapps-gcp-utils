@@ -17,6 +17,7 @@ Automatically updates a GCP firewall rule with your current public IP address. U
 Interactive navigator for Google Cloud Storage:
 
 - Browse buckets and folders.
+- Filter any listing incrementally by typing; `Load more` reveals further items.
 - View files with size information.
 - Download files to current directory.
 - Upload local files to GCS.
@@ -118,6 +119,23 @@ Create a JSON file in `~/.8bitsapps-gcp-utils/configurations/` (e.g., `gcp-optio
 | `buckets` | Array of available buckets (optional). |
 | `defaultBucket` | Default bucket for storage operations. |
 
+### Settings file
+
+List behavior is tuned through an optional `settings.json`, read from the current working directory first, then from `~/.8bitsapps-gcp-utils/`. Missing keys fall back to the defaults below:
+
+```json
+{
+  "storage": { "maxItems": 30, "pageStep": 30 },
+  "janitor": { "maxItems": 50, "pageStep": 50, "stoppedVmThresholdDays": 30 }
+}
+```
+
+| Key | Description |
+|-----|-------------|
+| `maxItems` | Initial window of a list: how many items are shown before the `Load more` row. It is not a hard cap — every item stays reachable through `Load more` or by typing a filter. |
+| `pageStep` | How many further items each `Load more` reveals. |
+| `janitor.stoppedVmThresholdDays` | Days a VM must have been stopped to be reported as a zombie. |
+
 ### GCP Credentials
 
 Run `gcpUtils`, choose **Manage authentication**, pick the configuration, then **Login**. A browser opens and the resulting credentials are written to `gcloud/<identity>/application_default_credentials.json`.
@@ -154,7 +172,7 @@ Configurations with `credentialsFile` keep working and print a deprecation warni
 gcpUtils
 ```
 
-Navigate menus with arrow keys. Press `ESC` to go back or exit.
+Navigate menus with arrow keys. Press `ESC` to go back or exit. In filterable lists (storage browser, janitor), type to narrow the list as you go: `ESC` first clears an active filter, then exits; the left arrow goes back one level when the filter is empty.
 
 ## License
 

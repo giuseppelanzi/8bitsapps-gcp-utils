@@ -33,7 +33,8 @@ Owns the visual presentation layer for storage operations in the storage navigat
 
 - `ui.formatUploadChoice()` — green "Upload file here" option.
 - `ui.formatCreateFolderChoice()` — green "Create folder here" option.
-- `ui.formatTruncationNotice(maxItems)` — yellow truncation notice.
+- `ui.formatLoadMore(shown, total)` — yellow "Load more" row (injected into filterableList).
+- `ui.formatNoMatches()` — gray "(no matches)" placeholder (injected into filterableList).
 
 ### Navigation trail labels
 

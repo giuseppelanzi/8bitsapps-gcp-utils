@@ -12,7 +12,7 @@ Owns the interaction flow, navigation state machine, and prompt design for the G
 
 | File | Owned sections |
 |---|---|
-| `commands/gcpJanitor.js` | `showJanitorMenu()`, `showInventoryMenu()`, `promptNameFilter()`, `showVMList()`, `showDiskListForVM()`, `showZombieActionMenu()`, `promptExceptionReason()`, and the navigation state machine inside `command.execute()` (while-loops, action routing, filter logic). |
+| `commands/gcpJanitor.js` | `showJanitorMenu()`, `showInventoryMenu()`, `showVMList()`, `showDiskListForVM()`, `showDiskInventory()`, `showSnapshotInventory()`, `showAddressInventory()`, `showZombieActionMenu()`, `promptExceptionReason()`, and the navigation state machine inside `command.execute()` (while-loops, action routing, filter replay for CSV export). |
 
 ## Prompt functions
 
@@ -28,16 +28,11 @@ Owns the interaction flow, navigation state machine, and prompt design for the G
 - `enableBack: true` (nested menu).
 - Returns `string|null|{action: "back"}` (`"vms"`, `"disks"`, `"snapshots"`, `"ips"`, back, or null).
 
-### `promptNameFilter(resourceType)`
+### `showVMList(instances, options)`
 
-- Input prompt for name substring filter.
-- Returns `string` (filter text, empty means show all).
-
-### `showVMList(instances, maxItems)`
-
-- Selectable VM instance list with truncation.
-- `enableBack: true`.
-- Returns `string|null|{action: "back"}` (VM name, back, or null).
+- Live-filterable VM instance list (`filterableList` prompt) with load-more; footer holds the CSV export row.
+- `enableBack: true`; `options` is `{maxItems, pageStep}`.
+- Returns `{selected, filterTerm}` where `selected` is `string|null|{action: "back"}` (VM name, `"__export_csv__"`, back, or null) and `filterTerm` is the active filter to replay on the full set.
 
 ### `showDiskListForVM(attachedDisks)`
 
@@ -46,11 +41,17 @@ Owns the interaction flow, navigation state machine, and prompt design for the G
 - `enableBack: true`.
 - Returns `string|null|{action: "back"}` (disk name, back, or null).
 
-### `showZombieActionMenu(zombies)`
+### `showDiskInventory(disks, computeInstance, options)` / `showSnapshotInventory(snapshots, options)` / `showAddressInventory(addresses, computeInstance, options)`
 
-- Flat list of all zombie resources for exception marking.
+- Flat inventory views as live-filterable, columnar lists (`ui.formatColumns` rows).
+- `enableBack: true`; `options` is `{maxItems, pageStep}`.
+- Returns `string|null|{action: "back"}`; selecting any row simply returns to the inventory menu.
+
+### `showZombieActionMenu(zombies, options)`
+
+- Live-filterable list of all zombie resources for exception marking; the type tag (`[disk]`, `[vm]`, ...) is part of the search text.
 - Returns `{action: "back"}` immediately if no zombies.
-- `enableBack: true`.
+- `enableBack: true`; `options` is `{maxItems, pageStep}`.
 - Returns `{resourceType, resourceName, zone}|null|{action: "back"}`.
 
 ### `promptExceptionReason()`
@@ -62,19 +63,19 @@ Owns the interaction flow, navigation state machine, and prompt design for the G
 
 ### Hierarchical exploration (VM detail — option A.1)
 
-1. User filters VMs by name (substring match, case-insensitive, empty = show all).
+1. User narrows the VM list by typing (substring match on name, case-insensitive, live).
 2. User selects a VM from the filtered list.
 3. Detail card shows: VM data, attached disks, static IPs.
 4. User can select a disk to drill down into its snapshots.
-5. Navigation: ← goes back one level, ESC exits to inventory menu.
-6. Empty states: "No disks attached.", "No snapshots found.", "No VM instances found matching filter."
+5. Navigation: ← goes back one level, ESC first clears an active filter, then exits.
+6. Empty states: "No disks attached.", "No snapshots found.", "No VM instances found."
+7. CSV export replays `filterTerm` on the full cached set, so it exports exactly what the user was seeing; a filter matching nothing warns instead of exporting.
 
 ### Global exploration (flat lists — options A.2, A.3, A.4)
 
-1. User enters a name filter (substring, case-insensitive, empty = show all).
-2. Filtered resources are displayed as a cli-table3 table.
-3. Tables respect `maxItems` setting; truncation message shown when exceeding limit.
-4. After viewing, loop returns to inventory menu.
+1. Resources are shown as live-filterable columnar lists (substring on name, case-insensitive).
+2. `maxItems` is the initial window; a `Load more` row reveals `pageStep` more per Enter.
+3. Selecting any row (or ←) returns to the inventory menu; ESC exits the command.
 
 ### Zombie flow (option B)
 
@@ -90,10 +91,10 @@ Owns the interaction flow, navigation state machine, and prompt design for the G
 ```
 Level 0: Janitor Menu (enableBack: false)
   ├── "inventory" → Level 1: Inventory Menu (enableBack: true)
-  │     ├── "vms" → promptNameFilter → showVMList → VM detail → disk drill-down
-  │     ├── "disks" → promptNameFilter → renderDisksTable
-  │     ├── "snapshots" → promptNameFilter → renderAllSnapshotsTable
-  │     ├── "ips" → promptNameFilter → renderAddressesTable
+  │     ├── "vms" → showVMList (live filter) → VM detail → disk drill-down
+  │     ├── "disks" → showDiskInventory (live filter)
+  │     ├── "snapshots" → showSnapshotInventory (live filter)
+  │     ├── "ips" → showAddressInventory (live filter)
   │     ├── back → Level 0
   │     └── null → exit
   ├── "zombies" → fetchAllResources → findZombieResources → renderZombieReport
@@ -128,8 +129,8 @@ All resources are fetched once via `Promise.all` on first use and cached for the
 
 - Keep prompt functions as pure flow logic: define choices, call inquirer, return result.
 - Use `enableBack: false` for Level 0, `enableBack: true` for all nested levels.
-- Apply name filter before passing data to render functions.
-- Follow the listWithEscape contract from [ux.md](.claude/agents/ux.md) (parent agent).
+- Let the filterableList prompt do the filtering; replay `state.filterTerm` on the full set only for side effects (CSV export).
+- Follow the listWithEscape and filterableList contracts from [ux.md](.claude/agents/ux.md) (parent agent).
 
 ## Do not
 

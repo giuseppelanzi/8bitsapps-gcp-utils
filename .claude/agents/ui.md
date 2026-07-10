@@ -30,6 +30,7 @@ Owns all visual presentation: chalk colors, ANSI terminal codes, the banner, for
 |---|---|
 | `gcpUtils.js` | `showBanner()`, `showUpdateNotification()`, `boxWidth` constant. |
 | `utils/prompts/listWithEscape.js` | ANSI escape sequences for screen clearing (`\x1b[${this.screen.height}A\x1b[J\x1b[G`). |
+| `utils/prompts/filterableList.js` | ANSI escape sequences for screen clearing (`finalizeWithClear`) and cursor visibility (`ui.hideCursor()` / `ui.showCursor()` calls). |
 
 ## Color palette
 
@@ -40,8 +41,8 @@ Owns all visual presentation: chalk colors, ANSI terminal codes, the banner, for
 | Brand / dark | `chalk.hex("#E73100")` | Banner lower section. |
 | Success | `chalk.green()` | Upload/create options, success log entries, checkmark symbol. |
 | Error | `chalk.red()` | Error log entries, "exit" indicator, cross symbol. |
-| Warning / loading | `chalk.yellow()` | Loading spinners, "no config" messages, truncation notice. |
-| Info / secondary | `chalk.gray()` | Version number, mode label, "press ENTER" message, info log entries. |
+| Warning / loading | `chalk.yellow()` | Loading spinners, "no config" messages, "Load more" row. |
+| Info / secondary | `chalk.gray()` | Version number, mode label, "press ENTER" message, info log entries, "(no matches)" placeholder. |
 | Navigation / action | `chalk.cyan()` | Commands to run, "back" indicator, folder names in navigation. |
 | Neutral / white | `chalk.whiteBright.bold()` | "8BitsApps" brand name. |
 
@@ -62,11 +63,11 @@ process.stdout.write(`\x1b[${this.screen.height}A\x1b[J\x1b[G`);
 
 | Category | Functions |
 |---|---|
-| ANSI helpers | `clearLine()`, `clearLineAbove()`, `overwriteLineAbove(message)`, `writeInline(text)` |
+| ANSI helpers | `clearLine()`, `clearLineAbove()`, `overwriteLineAbove(message)`, `writeInline(text)`, `hideCursor()`, `showCursor()` |
 | Progress | `showProgress(message)` |
 | Formatting | `formatSize(bytes)`, `getDisplayName(fullPath, prefix)`, `formatGreen(text)`, `formatRed(text)`, `formatYellow(text)`, `formatGray(text)`, `formatDate(isoString)`, `formatDaysAgo(isoString)`, `formatSectionHeader(title)`, `showSectionHeader(title)` |
 | Operation log | `showOperationLog(logs)` |
-| Menu choices | `formatUploadChoice()`, `formatCreateFolderChoice()`, `formatTruncationNotice(maxItems)` |
+| Menu choices | `formatUploadChoice()`, `formatCreateFolderChoice()`, `formatLoadMore(shown, total)`, `formatNoMatches()`, `formatColumns(cells, widths)` |
 | Navigation labels | `formatExitLabel()`, `formatBackLabel()`, `formatFolderLabel(name)` |
 | Messages | `showError(message)`, `showInfo(message)`, `showSuccess(message)`, `showWarning(message)` |
 
