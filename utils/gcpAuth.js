@@ -20,6 +20,19 @@ function parseImpersonationUrl(url) {
 }
 //
 /**
+ * Extracts the user account from parsed credentials.
+ * Recent gcloud versions write it at the top level of an authorized_user file, while an
+ * impersonated file keeps the user behind the service account under source_credentials.
+ * Files written by older versions carry neither, so the value stays optional.
+ * @param {object} raw - Parsed credentials.
+ * @returns {string|null} Account email, or null when the file does not carry one.
+ */
+function parseAccount(raw) {
+  const source = raw.source_credentials || {};
+  return raw.account || source.account || null;
+}
+//
+/**
  * Tells whether a configuration still authenticates with a static service account key.
  * @param {object} configuration - Loaded configuration object.
  * @returns {boolean} True if the deprecated credentialsFile field is in use.
@@ -97,9 +110,10 @@ function buildClientOptions(configuration) {
 //
 /**
  * Reads the Application Default Credentials file of an identity.
- * The authorized_user file holds no email: the account must be resolved live.
+ * The account is reported as written in the file, which is not proof that the
+ * credentials still work: only resolveActiveAccount() verifies them against Google.
  * @param {string} identity - Identity name.
- * @returns {{exists: boolean, corrupt: boolean, path: string, type: string|null, quotaProject: string|null, impersonatedServiceAccount: string|null}} Credentials summary.
+ * @returns {{exists: boolean, corrupt: boolean, path: string, type: string|null, account: string|null, quotaProject: string|null, impersonatedServiceAccount: string|null}} Credentials summary.
  */
 function readAdcInfo(identity) {
   const adcPath = getAdcPath(identity);
@@ -108,6 +122,7 @@ function readAdcInfo(identity) {
     corrupt: false,
     path: adcPath,
     type: null,
+    account: null,
     quotaProject: null,
     impersonatedServiceAccount: null
   };
@@ -126,6 +141,7 @@ function readAdcInfo(identity) {
   }
   //
   info.type = raw.type || null;
+  info.account = parseAccount(raw);
   info.quotaProject = raw.quota_project_id || null;
   info.impersonatedServiceAccount = parseImpersonationUrl(raw.service_account_impersonation_url);
   return info;
