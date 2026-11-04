@@ -125,8 +125,22 @@ async function showActionMenu() {
  */
 function showMigrationHint(configName) {
   ui.showWarning(`Configuration "${configName}" has no "auth.identity".`);
-  ui.showInfo("Add an auth block to the configuration to use short-lived credentials:");
+  ui.showInfo("Set an identity with Manage configurations to use short-lived credentials, or add an auth block by hand:");
   ui.writeInline(ui.formatGray("  \"auth\": { \"identity\": \"my-company\", \"account\": \"me@my-company.com\" }\n"));
+}
+//
+/**
+ * Shows a failed login, with a hint when the cause is known and the command to run by hand.
+ * @param {Error} err - The error thrown by the login.
+ * @param {object} auth - The auth block of the configuration.
+ */
+function showAuthFailure(err, auth) {
+  ui.showError(err.message);
+  const hint = describeAuthError(err);
+  if (hint) {
+    ui.showWarning(hint);
+  }
+  ui.writeInline(ui.formatGray(`Equivalent command: ${gcloud.formatLoginCommand(auth)}\n`));
 }
 //
 /**
@@ -157,12 +171,7 @@ async function execute(configName) {
         await revoke(auth);
       }
     } catch (err) {
-      ui.showError(err.message);
-      const hint = describeAuthError(err);
-      if (hint) {
-        ui.showWarning(hint);
-      }
-      ui.writeInline(ui.formatGray(`Equivalent command: ${gcloud.formatLoginCommand(auth)}\n`));
+      showAuthFailure(err, auth);
     }
     ui.blankLine();
   }
@@ -172,5 +181,8 @@ module.exports = {
   name: "auth",
   description: "Manage authentication (login, status, revoke)",
   execute,
+  login,
+  revoke,
+  showAuthFailure,
   showMigrationHint
 };

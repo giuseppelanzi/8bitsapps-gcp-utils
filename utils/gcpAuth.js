@@ -230,6 +230,32 @@ function describeIdentityMismatch(configuration) {
 }
 //
 /**
+ * Tells whether an identity has to log in (again) before a configuration can use it.
+ * The account is compared only when both the configuration and the credentials
+ * name one: files written by older gcloud versions do not carry it.
+ * @param {object} configuration - Configuration object with an auth.identity.
+ * @returns {string|null} Why a login is needed, or null when the credentials fit.
+ */
+function describeLoginNeed(configuration) {
+  const auth = configuration.auth || {};
+  const info = readAdcInfo(auth.identity);
+  if (!info.exists) {
+    return `Identity "${auth.identity}" is not logged in yet.`;
+  }
+  if (info.corrupt) {
+    return `The credentials file of "${auth.identity}" is not readable JSON.`;
+  }
+  const mismatch = describeIdentityMismatch(configuration);
+  if (mismatch) {
+    return mismatch;
+  }
+  if (typeof auth.account === "string" && auth.account && info.account && auth.account.toLowerCase() !== info.account.toLowerCase()) {
+    return `Identity "${auth.identity}" is logged in as ${info.account}, but this configuration names ${auth.account}.`;
+  }
+  return null;
+}
+//
+/**
  * Returns a human readable label for an ADC credential type.
  * @param {string|null} type - Credential type read from the ADC file.
  * @returns {string} Description of the credential type.
@@ -258,7 +284,7 @@ function describeAuthError(err) {
     return "The credentials expired or were revoked. Run the Authentication command and choose Login.";
   }
   if (message.includes("x-goog-user-project") || message.includes("quota project") || message.includes("USER_PROJECT_DENIED")) {
-    return "User credentials need a quota project. Set \"auth.quotaProject\" in the configuration and log in again.";
+    return "User credentials need a quota project. Set it with Manage configurations (\"auth.quotaProject\") and log in again.";
   }
   if (message.includes("iam.serviceAccounts.getAccessToken") || message.includes("serviceAccountTokenCreator")) {
     return "Impersonation denied: your account needs roles/iam.serviceAccountTokenCreator on the target service account.";
@@ -275,6 +301,7 @@ module.exports = {
   readAdcInfo,
   readGcloudIdentity,
   describeIdentityMismatch,
+  describeLoginNeed,
   describeCredentialType,
   describeAuthError
 };

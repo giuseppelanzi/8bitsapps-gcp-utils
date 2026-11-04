@@ -23,13 +23,16 @@ Note: the network/firewall command (`updateFirewall.js`) has no UX interaction â
 |---|---|
 | `utils/prompts/listWithEscape.js` | Custom Inquirer prompt with ESC, back arrow, and delete key support. |
 | `utils/prompts/filterableList.js` | List prompt with incremental type-to-filter and load-more pagination (ANSI escape sequences inside it are UI territory). |
+| `utils/prompts/inputWithEscape.js` | Input prompt with ESC support (the screen cleanup inside `onEscape()` is UI territory). |
 
 ## Owned sections in shared files
 
 | File | Owned sections |
 |---|---|
-| `gcpUtils.js` | `showMainMenu()`, `showConfigMenu()`, `waitForKeypress()`. |
+| `gcpUtils.js` | `showMainMenu()`, `showConfigMenu()` (it waits for a key when no configuration exists), `waitForKeypress()`. |
 | `commands/vmSsh.js` | `showRunningVMList()`, the list loop in `execute()`, and the flow of `connectToInstance()` (identity and status checks, account fallback, routing of the exit outcome). `connectToInstance()` is shared with the janitor and never throws. |
+| `commands/configure.js` | `askChoice()`, `askYesNo()`, `askText()` and the other `askâ€¦()` functions, the identity defaults (`describeLoginState()`, `adcAuthDefaults()`, `authDefaults()`), the wizard (`collectAnswers()`, `runWizard()`: modes `create`, `edit`, `duplicate`), the menu loop in `execute()`, and the delete and duplicate flows. `createConfiguration()` is shared with `init.js`. |
+| `commands/init.js` | The prompt flow of `execute()`: wizard offered when no configuration exists, example written only on "No", `true` returned only when a configuration was saved. |
 
 ## Responsibilities
 
@@ -75,6 +78,18 @@ Configuration options:
 - `deleteFilter` (function): as in listWithEscape, but DEL is inert when it is absent.
 - `state` (object): out-param; receives `state.filterTerm` on every rebuild (used to replay the filter, e.g. CSV export).
 - `formatLoadMore` / `noMatchesText` (functions): injected by callers from `utils/ui.js`, so the prompt imports no chalk.
+
+## inputWithEscape contract
+
+| Input | Return value | Meaning |
+|---|---|---|
+| ESC key | `null` | Exit without filter nor validation; works after a validation error too. |
+| Enter key | filtered answer | Normal answer, after `filter` and `validate`. An empty answer takes `default`. |
+
+Configuration options are those of inquirer's `input`. Conventions of the configuration wizard:
+- `filter: configEditor.normalizeAnswer`: trims the answer and turns `-` into `""`, so an optional field can be cleared while ENTER keeps the default.
+- An empty default is passed as `undefined`, otherwise inquirer prints `()`.
+- In `listWithEscape`, back and delete are on by default: `askChoice()` turns them off (`enableBack: false`, `deleteFilter: () => false`) unless the flow needs them.
 
 ## Menu prompt pattern
 

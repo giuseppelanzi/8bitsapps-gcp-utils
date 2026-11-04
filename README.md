@@ -48,9 +48,20 @@ Automatically updates a GCP firewall rule with your current public IP address. U
 
 Logs in with short-lived Application Default Credentials (ADC), one identity per configuration, so that several GCP accounts from different organizations can be used side by side without static service account keys.
 
+### Manage configurations
+
+Creates, edits, duplicates and deletes configurations from the menu, so the JSON files never need editing by hand.
+
+- A wizard asks every option in turn and proposes the current value: ENTER keeps it, `-` clears an optional field, ESC discards the whole wizard without writing anything.
+- The identity is picked from those already known, with their login state and the configurations that use them, or created anew. A warning shows up when configurations sharing an identity would log in with a different account or impersonate a different service account, and the login offer then defaults to No.
+- A summary shows what changed before saving, and a login is offered when the credentials of the identity do not fit the configuration.
+- **Duplicate** starts from the values of another configuration, which makes sharing an identity and its login easy.
+- `DEL` deletes a configuration together with its janitor exceptions. When no other configuration uses its identity, revoking the credentials is offered too.
+- Fields the wizard does not know about are kept as they are, and a value left unchanged keeps its original form in the file.
+
 ### Initialize configuration
 
-Sets up the global configuration directory (`~/.8bitsapps-gcp-utils/`) with the required structure.
+Sets up the configuration directory with the required structure. When no configuration exists yet, it offers the wizard for the first one.
 
 ## Requirements
 
@@ -92,6 +103,8 @@ On first run, the tool will prompt you to initialize:
 gcpUtils
 ```
 
+Initialization offers to create the first configuration with the wizard, then to log in. Declining writes an example configuration to edit by hand instead.
+
 This creates the following structure:
 
 ```
@@ -103,7 +116,7 @@ This creates the following structure:
 
 ### Configuration file
 
-Create a JSON file in `~/.8bitsapps-gcp-utils/configurations/` (e.g., `gcp-options-myproject.json`):
+Configurations are best created and edited with **Manage configurations**. They are plain JSON files in `~/.8bitsapps-gcp-utils/configurations/` (e.g., `gcp-options-myproject.json`), and can be edited by hand as well:
 
 ```json
 {

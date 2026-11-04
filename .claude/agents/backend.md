@@ -22,10 +22,11 @@ Owns the GCP utility classes entry point, shared utilities, and common patterns.
 | File | Description |
 |---|---|
 | `GCPUtilities/index.js` | Module entry point; exports Network, Storage, Compute, version. |
-| `utils/configLoader.js` | Configuration listing and loading utility (`listConfigurations()`, `loadConfiguration()`). |
+| `utils/configLoader.js` | Configuration files: listing and loading (`listConfigurations()`, `loadConfiguration()`, `readConfigurations()`, `configurationExists()`), atomic writes (`saveConfiguration()`), deletion together with the janitor exceptions (`deleteConfiguration()`), and the known identities (`listIdentities()`). A new name must pass `isValidName()`; a name already in the directory is accepted as it is. |
+| `utils/configEditor.js` | Pure logic of the configuration wizard, no UI: answer normalization (`normalizeAnswer()`, `parseList()`, `normalizeCidr()`), field validators, `isNameTaken()` and `findName()` (names are compared ignoring case, as the file system does on macOS and Windows; a new identity typed with the name of a known one selects it), `buildConfiguration()` (an unchanged answer keeps its original representation), `findIdentityConflicts()` (account or impersonation differing from the other configurations of an identity), `siblingAuthDefaults()`, and the summary rows (`describeFields()`). |
 | `utils/gcloud.js` | gcloud CLI wrapper: login, revoke, live account resolution, and SSH sessions (`buildSshArgs()`, `buildSshEnv()`, `formatSshCommand()`, `runComputeSsh()`). |
-| `utils/gcpAuth.js` | Credentials for the client libraries (`buildClientOptions()`) and for gcloud (`readGcloudIdentity()`), ADC file inspection, auth error hints. |
-| `utils/paths.js` | Path management utility (local/global mode detection). |
+| `utils/gcpAuth.js` | Credentials for the client libraries (`buildClientOptions()`) and for gcloud (`readGcloudIdentity()`), ADC file inspection, auth error hints, and whether a configuration needs a new login (`describeLoginNeed()`). |
+| `utils/paths.js` | Path management utility (local/global mode detection), safe file names (`isValidName()`), and the identity directories (`getGcloudRootDir()`, `getGcloudDir()`). |
 | `utils/settings.js` | Settings management utility. |
 | `utils/updateChecker.js` | npm version checker utility. |
 | `utils/exceptions.js` | Exception management utility for janitor. |
@@ -93,6 +94,10 @@ module.exports = {
   execute
 };
 ```
+
+A command with `standalone: true` (e.g. `configure`) is run by `main()` without the configuration menu, so its `execute()` takes no configuration name and picks configurations itself.
+
+Shared exports of `commands/auth.js`: `login(auth)` and `revoke(auth)`, used by `configure` after saving and after deleting; `showAuthFailure(err, auth)`, the error, hint and equivalent login command of a failed login; `showMigrationHint(configName)`, used by `vmSsh`.
 
 ## Do
 

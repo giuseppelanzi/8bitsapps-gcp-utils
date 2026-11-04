@@ -176,7 +176,7 @@ const command = {
     // Get available buckets.
     const buckets = await storage.getBuckets();
     if (buckets.length === 0) {
-      ui.showError("No buckets configured. Add 'buckets' array or 'defaultBucket' to your configuration.");
+      ui.showError("No buckets configured. Add them with Manage configurations, or set 'buckets' in your configuration.");
       return;
     }
     //

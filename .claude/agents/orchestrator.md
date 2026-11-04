@@ -13,7 +13,7 @@ Coordinates all agents, decides workflow, owns the application lifecycle.
 
 | File | Owned sections |
 |---|---|
-| `gcpUtils.js` | `main()` function: while-loop, command routing, init check flow, update check orchestration. |
+| `gcpUtils.js` | `main()` function: while-loop, command routing (including standalone commands), init check flow, update check orchestration; `showCommandError()`. |
 | `commands/index.js` | Command registry array (adding/removing/reordering commands). |
 
 ## Responsibilities
@@ -75,6 +75,8 @@ For releases:
 
 ## Pattern reference: main() loop in gcpUtils.js
 
+First run, before the loop: when `isInitialized()` is false, `init.execute()` runs the wizard and returns `true` only if a configuration was saved. Then `waitForKeypress()` keeps its output readable before the loop clears the screen; otherwise `main()` exits.
+
 ```javascript
 while (true) {
   console.clear();
@@ -86,6 +88,13 @@ while (true) {
   //
   // Command routing (Orchestrator owns this logic).
   if (cmdName === "init") { ... }
+  //
+  // A command with standalone: true picks its configurations itself (e.g. configure).
+  // It returns straight to the menu; only an error waits for a key.
+  if (cmd.standalone) {
+    try { await cmd.execute(); } catch (err) { showCommandError(err); await waitForKeypress(); }
+    continue;
+  }
   const configName = await showConfigMenu();  // UX owns this function.
   if (configName === null) { continue; }      // ESC back.
   //

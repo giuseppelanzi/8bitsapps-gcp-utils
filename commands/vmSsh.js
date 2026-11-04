@@ -136,7 +136,7 @@ async function connectToInstance(configName, instance) {
     const tunnelThroughIap = Boolean(configuration.ssh && configuration.ssh.tunnelThroughIap);
     if (!tunnelThroughIap && !instance.externalIp) {
       ui.showWarning(`VM "${instance.name}" has no external IP: a direct connection only works from inside its network.`);
-      ui.writeInline(ui.formatGray("Set \"ssh\": { \"tunnelThroughIap\": true } in the configuration to connect through IAP.\n"));
+      ui.writeInline(ui.formatGray("Turn on IAP with Manage configurations (\"ssh.tunnelThroughIap\") to connect through IAP.\n"));
     }
     //
     const gcloudIdentity = readGcloudIdentity(auth);
