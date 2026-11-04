@@ -1,5 +1,5 @@
 ---
-name: release-notes
+name: craft-release
 description: Generate release notes based on git diff and commit log between versions, show them for review, then publish them as a draft GitHub release on confirmation.
 user-invocable: true
 context: fork

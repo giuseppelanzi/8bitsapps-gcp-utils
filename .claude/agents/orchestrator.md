@@ -56,7 +56,7 @@ After every agent modification cycle:
 
 For releases:
 1. Update version in package.json.
-2. Invoke `/release-notes`.
+2. Invoke `/craft-release`.
 3. Show the result to the user for approval before any push.
 
 ## Do
