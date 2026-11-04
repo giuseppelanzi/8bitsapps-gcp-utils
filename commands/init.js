@@ -33,7 +33,10 @@ const command = {
       defaultProjectId: "YOUR_PROJECT_ID",
       defaultFirewallRule: "YOUR_FIREWALL_RULE_NAME",
       defaultFixedIPAddresses: ["8.8.8.8/32"],
-      defaultBucket: "YOUR_BUCKET_NAME"
+      defaultBucket: "YOUR_BUCKET_NAME",
+      ssh: {
+        tunnelThroughIap: false
+      }
     };
     const exampleConfigPath = path.join(configurationsDir, "gcp-options-example.json");
     //

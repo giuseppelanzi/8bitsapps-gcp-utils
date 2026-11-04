@@ -8,6 +8,7 @@ const { loadExceptions, isException, addException } = require("../utils/exceptio
 const ui = require("../utils/ui.js");
 const csvExporter = require("../utils/csvExporter.js");
 const paths = require("../utils/paths.js");
+const vmSsh = require("./vmSsh.js");
 //
 // Register custom prompts.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
@@ -134,24 +135,33 @@ async function showVMList(instances, options) {
 }
 //
 /**
- * Shows a disk selection menu within VM detail view.
- * @param {Array} attachedDisks - Disks attached to the VM.
- * @returns {Promise<string|null|{action: string}>} Selected disk name or null/back.
+ * Shows the actions of the VM detail view: the attached disks, to drill down into
+ * their snapshots, and the SSH connection when the VM is running.
+ * Disks keep the numbers of the "Attached Disks" table, and the SSH action follows them.
+ * @param {{instance: object, attachedDisks: Array}} detail - VM detail data.
+ * @returns {Promise<string|null|{action: string}>} Disk name, "__ssh__", back, or null on ESC.
  */
-async function showDiskListForVM(attachedDisks) {
-  if (attachedDisks.length === 0) {
-    return { action: "back" };
-  }
-  //
+async function showVMActionMenu(detail) {
+  const { instance, attachedDisks } = detail;
   const choices = attachedDisks.map((d, i) => ({
     name: `${i + 1}. ${d.name} (${d.sizeGb} GB, ${d.type})`,
     value: d.name
   }));
+  if (instance.status === "RUNNING") {
+    if (choices.length > 0) {
+      choices.push(new inquirer.Separator("\u2500"));
+    }
+    choices.push({ name: `${attachedDisks.length + 1}. Connect via SSH`, value: "__ssh__" });
+  }
+  //
+  if (choices.length === 0) {
+    return { action: "back" };
+  }
   //
   const { selected } = await inquirer.prompt([{
     type: "listWithEscape",
     name: "selected",
-    message: "Select disk to view snapshots (\u2190 back, ESC to exit):",
+    message: "Select a disk to view snapshots or an action (\u2190 back, ESC to exit):",
     choices,
     enableBack: true
   }]);
@@ -253,6 +263,7 @@ function renderVMDetailCard(detail) {
     ["Machine Type", instance.machineType],
     ["Status", formatStatusColor(instance.status)],
     ["Zone", instance.zone],
+    ["External IP", instance.externalIp || "-"],
     ["Last Start", ui.formatDate(instance.lastStart)],
     ["Created", ui.formatDate(instance.creationTimestamp)]
   );
@@ -634,20 +645,27 @@ const command = {
               //
               renderVMDetailCard(detail);
               //
-              // Disk drill-down loop (Level 3 -> Level 4).
+              // Disk drill-down and SSH loop (Level 3 -> Level 4).
               while (true) {
-                const diskChoice = await showDiskListForVM(detail.attachedDisks);
+                const actionChoice = await showVMActionMenu(detail);
                 //
-                if (diskChoice === null) {
+                if (actionChoice === null) {
                   return; // ESC.
                 }
-                if (diskChoice?.action === "back") {
+                if (actionChoice?.action === "back") {
                   break; // Back to VM list.
                 }
                 //
+                // SSH session: it never throws, then the detail card comes back.
+                if (actionChoice === "__ssh__") {
+                  await vmSsh.connectToInstance(configName, detail.instance);
+                  renderVMDetailCard(detail);
+                  continue;
+                }
+                //
                 // Show snapshots for selected disk (Level 4).
-                const diskSnapshots = computeInstance.getDiskSnapshots(cachedSnapshots, diskChoice);
-                renderSnapshotsTable(diskSnapshots, `Snapshots for disk: ${diskChoice}`);
+                const diskSnapshots = computeInstance.getDiskSnapshots(cachedSnapshots, actionChoice);
+                renderSnapshotsTable(diskSnapshots, `Snapshots for disk: ${actionChoice}`);
                 //
                 // After viewing, wait for user to go back.
                 const { selected } = await inquirer.prompt([{

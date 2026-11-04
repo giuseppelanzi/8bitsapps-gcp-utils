@@ -1,18 +1,9 @@
-const fs = require("fs/promises");
 const inquirer = require("inquirer");
-const { getConfigPath, getAdcPath } = require("../utils/paths.js");
+const { getAdcPath } = require("../utils/paths.js");
+const { loadConfiguration } = require("../utils/configLoader.js");
 const gcloud = require("../utils/gcloud.js");
 const { readAdcInfo, describeCredentialType, describeAuthError, describeIdentityMismatch } = require("../utils/gcpAuth.js");
 const ui = require("../utils/ui.js");
-//
-/**
- * Loads a configuration file.
- * @param {string} configName - Configuration name.
- * @returns {Promise<object>} Parsed configuration.
- */
-async function loadConfiguration(configName) {
-  return JSON.parse(await fs.readFile(getConfigPath(configName), "utf8"));
-}
 //
 /**
  * Logs in and stores the credentials of an identity.
@@ -180,5 +171,6 @@ async function execute(configName) {
 module.exports = {
   name: "auth",
   description: "Manage authentication (login, status, revoke)",
-  execute
+  execute,
+  showMigrationHint
 };

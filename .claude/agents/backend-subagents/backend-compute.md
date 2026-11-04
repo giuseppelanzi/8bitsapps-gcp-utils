@@ -38,6 +38,7 @@ Owns the Compute utility class — the GCP Compute Engine SDK wrapper for instan
 | `creationTimestamp` | Instance creation timestamp. |
 | `disks` | Array of `{source, deviceName}` for attached disks. |
 | `networkInterfaces` | Raw network interface data. |
+| `externalIp` | First external IP (`natIP`) of the network interfaces, or `""` when the VM has none. |
 
 ### Persistent Disks
 
@@ -89,6 +90,7 @@ Owns the Compute utility class — the GCP Compute Engine SDK wrapper for instan
 | `findZombieResources(instances, disks, snapshots, addresses, days)` | `object` | Applies zombie detection rules to pre-fetched data. |
 | `extractAttachedVMName(users)` | `string` | Extracts VM name from disk users array. |
 | `extractUserName(users)` | `string` | Extracts resource name from address users array. |
+| `extractExternalIp(networkInterfaces)` | `string` | Extracts the first external IP from raw network interfaces, or `""`. |
 
 ### Key behaviors
 

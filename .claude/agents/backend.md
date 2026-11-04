@@ -22,7 +22,9 @@ Owns the GCP utility classes entry point, shared utilities, and common patterns.
 | File | Description |
 |---|---|
 | `GCPUtilities/index.js` | Module entry point; exports Network, Storage, Compute, version. |
-| `utils/configLoader.js` | Configuration listing utility. |
+| `utils/configLoader.js` | Configuration listing and loading utility (`listConfigurations()`, `loadConfiguration()`). |
+| `utils/gcloud.js` | gcloud CLI wrapper: login, revoke, live account resolution, and SSH sessions (`buildSshArgs()`, `buildSshEnv()`, `formatSshCommand()`, `runComputeSsh()`). |
+| `utils/gcpAuth.js` | Credentials for the client libraries (`buildClientOptions()`) and for gcloud (`readGcloudIdentity()`), ADC file inspection, auth error hints. |
 | `utils/paths.js` | Path management utility (local/global mode detection). |
 | `utils/settings.js` | Settings management utility. |
 | `utils/updateChecker.js` | npm version checker utility. |

@@ -32,7 +32,7 @@ Builds the zombie scan summary line:
 ### `renderVMDetailCard(detail)`
 
 Three cli-table3 tables in sequence:
-1. VM info (Field/Value layout with name, machine type, status, zone, dates).
+1. VM info (Field/Value layout with name, machine type, status, zone, external IP, dates).
 2. Attached disks (numbered list with name, size, type).
 3. Static IPs (address, type, status).
 
@@ -55,7 +55,7 @@ Full zombie report: summary line + 4 categorized tables (unattached disks, stopp
 | View | Columns |
 |---|---|
 | VM list (selectable) | # Name (MachineType) [Status] Zone |
-| VM detail card | Field/Value: Name, Machine Type, Status, Zone, Last Start, Created |
+| VM detail card | Field/Value: Name, Machine Type, Status, Zone, External IP (`-` when none), Last Start, Created |
 | VM attached disks | #, Name, Size (GB), Type |
 | VM static IPs | IP Address, Type, Status |
 | Disk drill-down snapshots | Name, Creation Date, Size (GB), Source Disk |

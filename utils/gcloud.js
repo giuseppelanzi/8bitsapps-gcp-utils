@@ -1,7 +1,7 @@
 const childProcess = require("child_process");
 const fs = require("fs/promises");
 const axios = require("axios");
-const { getGcloudDir } = require("./paths.js");
+const { getGcloudDir, getAdcPath } = require("./paths.js");
 //
 const TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo";
 const GCLOUD_MISSING = "gcloud is not installed or not in PATH. Install the Google Cloud SDK: https://cloud.google.com/sdk/docs/install";
@@ -19,6 +19,35 @@ const ADC_NOTICES = [
   /^These credentials will be used by any library that requests Application Default Credentials \(ADC\)\.$/,
   /^Quota project ".*" was added to ADC which can be used by Google client libraries/
 ];
+//
+// Inherited gcloud variables that decide who a command runs as, or who is billed.
+// An SSH session must run as the identity of the configuration, not as the shell's.
+const IDENTITY_ENV_PATTERN = /^CLOUDSDK_(AUTH_|BILLING_|CORE_ACCOUNT$)/;
+//
+/**
+ * Builds the variables that confine gcloud to the identity's own configuration directory.
+ * gcloud writes DEBUG logs under CLOUDSDK_CONFIG/logs, and the login flow records
+ * the OAuth refresh token there in cleartext. Disabling file logging still lets
+ * gcloud garbage collect the log directories already on disk.
+ * @param {string} identity - Identity name.
+ * @returns {object} The CLOUDSDK_CONFIG and file logging variables.
+ */
+function baseGcloudEnv(identity) {
+  return {
+    CLOUDSDK_CONFIG: getGcloudDir(identity),
+    [NO_FILE_LOGGING]: "1"
+  };
+}
+//
+/**
+ * Renders environment variables as shell assignments.
+ * Values are double quoted, because the configuration directory may contain spaces.
+ * @param {object} env - Variables to render.
+ * @returns {string} The assignments, space separated.
+ */
+function formatEnv(env) {
+  return Object.entries(env).map(([name, value]) => `${name}="${value}"`).join(" ");
+}
 //
 /**
  * Builds the gcloud arguments that create the credentials of an identity.
@@ -45,7 +74,52 @@ function buildLoginArgs(auth) {
  * @returns {string} The equivalent shell command.
  */
 function formatLoginCommand(auth) {
-  return `CLOUDSDK_CONFIG="${getGcloudDir(auth.identity)}" ${NO_FILE_LOGGING}=1 gcloud ${buildLoginArgs(auth).join(" ")}`;
+  return `${formatEnv(baseGcloudEnv(auth.identity))} gcloud ${buildLoginArgs(auth).join(" ")}`;
+}
+//
+/**
+ * Builds the gcloud arguments that open an SSH session on a VM instance.
+ * Single source of truth for both the executed command and the printed hint.
+ * @param {{instance: string, projectId: string, zone: string, tunnelThroughIap: boolean}} session - SSH session.
+ * @returns {string[]} Arguments for gcloud.
+ */
+function buildSshArgs(session) {
+  const args = ["compute", "ssh", session.instance, `--project=${session.projectId}`, `--zone=${session.zone}`];
+  if (session.tunnelThroughIap) {
+    args.push("--tunnel-through-iap");
+  }
+  return args;
+}
+//
+/**
+ * Builds the environment that runs gcloud as the identity of an SSH session.
+ * The identity directory holds only the ADC file, not credentials of gcloud's own,
+ * so the file reaches gcloud through the credential file override. The override
+ * leaves core/account empty, while OS Login reads the user from it: it is set too.
+ * auth/impersonate_service_account is never set, because an impersonated ADC file
+ * already acts as the service account and gcloud would impersonate it twice.
+ * @param {{identity: string, account: string, quotaProject: string|null}} session - SSH session.
+ * @returns {object} The CLOUDSDK_* variables only, without the inherited environment.
+ */
+function buildSshEnv(session) {
+  const env = {
+    ...baseGcloudEnv(session.identity),
+    CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: getAdcPath(session.identity),
+    CLOUDSDK_CORE_ACCOUNT: session.account
+  };
+  if (session.quotaProject) {
+    env.CLOUDSDK_BILLING_QUOTA_PROJECT = session.quotaProject;
+  }
+  return env;
+}
+//
+/**
+ * Renders the SSH command as the user would type it in a shell.
+ * @param {object} session - SSH session, see buildSshArgs() and buildSshEnv().
+ * @returns {string} The equivalent shell command.
+ */
+function formatSshCommand(session) {
+  return `${formatEnv(buildSshEnv(session))} gcloud ${buildSshArgs(session).join(" ")}`;
 }
 //
 /**
@@ -123,16 +197,9 @@ function stdioForMode(mode) {
  */
 function runGcloud(args, identity, mode) {
   return new Promise((resolve, reject) => {
-    // gcloud writes DEBUG logs under CLOUDSDK_CONFIG/logs, and the login flow records
-    // the OAuth refresh token there in cleartext. Disabling file logging still lets
-    // gcloud garbage collect the log directories already on disk.
     const child = childProcess.spawn("gcloud", args, {
       stdio: stdioForMode(mode),
-      env: {
-        ...process.env,
-        CLOUDSDK_CONFIG: getGcloudDir(identity),
-        [NO_FILE_LOGGING]: "1"
-      }
+      env: { ...process.env, ...baseGcloudEnv(identity) }
     });
     let stdout = "";
     let stderr = "";
@@ -199,10 +266,52 @@ async function resolveActiveAccount(identity) {
   }
 }
 //
+/**
+ * Copies the inherited environment without the gcloud variables of IDENTITY_ENV_PATTERN.
+ * A CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT exported in the shell, for instance,
+ * would make gcloud impersonate on top of the ADC file. Settings such as
+ * CLOUDSDK_PYTHON are kept.
+ * @returns {object} The filtered environment.
+ */
+function inheritedEnvWithoutIdentity() {
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !IDENTITY_ENV_PATTERN.test(name)));
+}
+//
+/**
+ * Opens an interactive SSH session through gcloud compute ssh.
+ * The child owns the terminal until it exits. Ctrl+C reaches it through the tty,
+ * so this process ignores SIGINT meanwhile instead of quitting the whole tool.
+ * @param {object} session - SSH session, see buildSshArgs() and buildSshEnv().
+ * @returns {Promise<{code: number|null, signal: string|null}>} How gcloud exited.
+ */
+function runComputeSsh(session) {
+  return new Promise((resolve, reject) => {
+    const ignoreInterrupt = () => {};
+    const cleanup = () => process.removeListener("SIGINT", ignoreInterrupt);
+    process.on("SIGINT", ignoreInterrupt);
+    const child = childProcess.spawn("gcloud", buildSshArgs(session), {
+      stdio: "inherit",
+      env: { ...inheritedEnvWithoutIdentity(), ...buildSshEnv(session) }
+    });
+    child.on("error", err => {
+      cleanup();
+      reject(err.code === "ENOENT" ? new Error(GCLOUD_MISSING) : err);
+    });
+    child.on("close", (code, signal) => {
+      cleanup();
+      resolve({ code, signal });
+    });
+  });
+}
+//
 module.exports = {
   buildLoginArgs,
   formatLoginCommand,
+  buildSshArgs,
+  buildSshEnv,
+  formatSshCommand,
   loginAdc,
   revokeAdc,
-  resolveActiveAccount
+  resolveActiveAccount,
+  runComputeSsh
 };

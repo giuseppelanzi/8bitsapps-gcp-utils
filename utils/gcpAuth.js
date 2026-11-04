@@ -6,6 +6,10 @@ const USER_TYPE = "authorized_user";
 const IMPERSONATED_TYPE = "impersonated_service_account";
 const SERVICE_ACCOUNT_TYPE = "service_account";
 //
+// Value of billing/quota_project that keeps gcloud from sending a quota project,
+// so that the calls are billed as the credentials dictate.
+const GCLOUD_NO_QUOTA_PROJECT = "LEGACY";
+//
 /**
  * Extracts the service account email from an impersonation URL.
  * @param {string} url - The service_account_impersonation_url value.
@@ -64,6 +68,27 @@ function applyQuotaProject(credentials, auth) {
 }
 //
 /**
+ * Builds the error for an identity that has no credentials file.
+ * @param {object} auth - The auth block of the configuration.
+ * @returns {Error} An error that describeAuthError() recognizes.
+ */
+function missingCredentialsError(auth) {
+  return new Error(
+    `No credentials for identity "${auth.identity}".\n` +
+    `Run the Authentication command and choose Login, or run:\n  ${formatLoginCommand(auth)}`
+  );
+}
+//
+/**
+ * Builds the error for a credentials file that is not readable JSON.
+ * @param {string} identity - Identity the file belongs to.
+ * @returns {Error} An error that asks to recreate the credentials.
+ */
+function unreadableCredentialsError(identity) {
+  return new Error(`The credentials of identity "${identity}" are not readable JSON. Run Login to recreate them.`);
+}
+//
+/**
  * Reads and parses a credentials file.
  * @param {string} filePath - Absolute path to the credentials file.
  * @param {string} identity - Identity the file belongs to, used in errors.
@@ -74,7 +99,7 @@ function readCredentials(filePath, identity) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
   } catch {
-    throw new Error(`The credentials of identity "${identity}" are not readable JSON. Run Login to recreate them.`);
+    throw unreadableCredentialsError(identity);
   }
 }
 //
@@ -91,10 +116,7 @@ function buildClientOptions(configuration) {
   if (auth.identity) {
     const adcPath = getAdcPath(auth.identity);
     if (!fs.existsSync(adcPath)) {
-      throw new Error(
-        `No credentials for identity "${auth.identity}".\n` +
-        `Run the Authentication command and choose Login, or run:\n  ${formatLoginCommand(auth)}`
-      );
+      throw missingCredentialsError(auth);
     }
     const credentials = readCredentials(adcPath, auth.identity);
     applyQuotaProject(credentials, auth);
@@ -145,6 +167,35 @@ function readAdcInfo(identity) {
   info.quotaProject = raw.quota_project_id || null;
   info.impersonatedServiceAccount = parseImpersonationUrl(raw.service_account_impersonation_url);
   return info;
+}
+//
+/**
+ * Reads what gcloud needs to act as the identity of a configuration.
+ * The account is the principal that makes the calls: the service account when the
+ * identity impersonates one, otherwise the user who logged in. It is null when the
+ * file predates the account field, and the caller then resolves it live.
+ * The quota project follows the rule of applyQuotaProject(): under impersonation
+ * gcloud is told not to send one, because the service account is billed. Unlike
+ * there, impersonation recorded in the file counts too, because the file decides
+ * who gcloud acts as even when the configuration disagrees with it.
+ * @param {object} auth - The auth block of the configuration.
+ * @returns {{account: string|null, quotaProject: string|null}} Values for gcloud.
+ * @throws {Error} If the credentials file is missing or not readable JSON.
+ */
+function readGcloudIdentity(auth) {
+  const info = readAdcInfo(auth.identity);
+  if (!info.exists) {
+    throw missingCredentialsError(auth);
+  }
+  if (info.corrupt) {
+    throw unreadableCredentialsError(auth.identity);
+  }
+  //
+  const impersonating = Boolean(auth.impersonateServiceAccount || info.impersonatedServiceAccount);
+  return {
+    account: info.impersonatedServiceAccount || info.account || null,
+    quotaProject: impersonating ? GCLOUD_NO_QUOTA_PROJECT : auth.quotaProject || info.quotaProject || null
+  };
 }
 //
 /**
@@ -222,6 +273,7 @@ module.exports = {
   isLegacyKeyAuth,
   buildClientOptions,
   readAdcInfo,
+  readGcloudIdentity,
   describeIdentityMismatch,
   describeCredentialType,
   describeAuthError
