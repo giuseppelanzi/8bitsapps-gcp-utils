@@ -5,6 +5,8 @@ const { getSettings } = require("../utils/settings.js");
 const { loadConfiguration } = require("../utils/configLoader.js");
 const { readGcloudIdentity, describeAuthError } = require("../utils/gcpAuth.js");
 const gcloud = require("../utils/gcloud.js");
+const editor = require("../utils/configEditor.js");
+const paths = require("../utils/paths.js");
 const { showMigrationHint } = require("./auth.js");
 const ui = require("../utils/ui.js");
 //
@@ -83,6 +85,18 @@ async function showRunningVMList(instances, options) {
 // --- SSH session. ---
 //
 /**
+ * Resolves the private key of a configuration and checks it before gcloud runs.
+ * @param {object} configuration - Configuration object.
+ * @returns {Promise<{sshKeyFile: string|null, problem: string|null}>} The expanded key path, null for gcloud's default, and what is wrong with it.
+ */
+async function resolveKeyFile(configuration) {
+  const keyFile = editor.sshKeyFile(configuration);
+  const sshKeyFile = keyFile ? paths.expandHome(keyFile) : null;
+  const problem = sshKeyFile ? await gcloud.describeSshKeyProblem(sshKeyFile) : null;
+  return { sshKeyFile, problem };
+}
+//
+/**
  * Resolves the account of an identity whose credentials file does not carry it.
  * @param {string} identity - Identity name.
  * @returns {Promise<string>} The account email.
@@ -132,8 +146,13 @@ async function connectToInstance(configName, instance) {
       ui.showWarning(`VM "${instance.name}" is ${instance.status}: only running instances accept SSH.`);
       return;
     }
+    const { sshKeyFile, problem } = await resolveKeyFile(configuration);
+    if (problem) {
+      ui.showError(problem);
+      return;
+    }
     //
-    const tunnelThroughIap = Boolean(configuration.ssh && configuration.ssh.tunnelThroughIap);
+    const tunnelThroughIap = editor.tunnelsThroughIap(configuration);
     if (!tunnelThroughIap && !instance.externalIp) {
       ui.showWarning(`VM "${instance.name}" has no external IP: a direct connection only works from inside its network.`);
       ui.writeInline(ui.formatGray("Turn on IAP with Manage configurations (\"ssh.tunnelThroughIap\") to connect through IAP.\n"));
@@ -148,7 +167,8 @@ async function connectToInstance(configName, instance) {
       projectId: configuration.defaultProjectId,
       zone: instance.zone,
       instance: instance.name,
-      tunnelThroughIap
+      tunnelThroughIap,
+      sshKeyFile
     };
     ui.showInfo(`Connecting to ${instance.name} as ${account} (${tunnelThroughIap ? "via IAP tunnel" : "direct"})...`);
     ui.writeInline(ui.formatGray(`Equivalent command: ${gcloud.formatSshCommand(session)}\n`));
@@ -181,6 +201,13 @@ async function execute(configName) {
   const configuration = await loadConfiguration(configName);
   if (!configuration.auth || !configuration.auth.identity) {
     showMigrationHint(configName);
+    return;
+  }
+  //
+  // A broken key pair fails every VM alike: stop before listing them.
+  const { problem } = await resolveKeyFile(configuration);
+  if (problem) {
+    ui.showError(problem);
     return;
   }
   //

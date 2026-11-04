@@ -123,6 +123,23 @@ function getCredentialsPath(credentialsFile) {
 }
 //
 /**
+ * Expands a leading "~" to the home directory, as a shell would.
+ * Accepts "~", "~/…" and, on Windows, "~\…"; any other path is returned unchanged.
+ * @param {string} filePath - Path as typed by the user.
+ * @returns {string} The path with the home directory in place of "~".
+ */
+function expandHome(filePath) {
+  const separators = process.platform === "win32" ? ["/", "\\"] : ["/"];
+  if (filePath === "~") {
+    return os.homedir();
+  }
+  if (filePath.startsWith("~") && separators.includes(filePath[1])) {
+    return path.join(os.homedir(), filePath.slice(2));
+  }
+  return filePath;
+}
+//
+/**
  * Returns a timestamped export file path in the current working directory.
  * @param {string} prefix - File name prefix (e.g. "vm-instances").
  * @returns {string} Absolute path to the export CSV file.
@@ -143,5 +160,6 @@ module.exports = {
   getAdcPath,
   getConfigPath,
   getCredentialsPath,
+  expandHome,
   getExportPath
 };

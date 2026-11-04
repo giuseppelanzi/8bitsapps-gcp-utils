@@ -10,6 +10,7 @@ Opens a shell on a running Compute Engine VM through `gcloud compute ssh`, as th
 
 - Pick a running VM from a filterable list, or choose **Connect via SSH** from the VM detail card of the janitor.
 - Set `ssh.tunnelThroughIap` to reach VMs through Identity-Aware Proxy, including those without an external IP.
+- Set `ssh.keyFile` to use an SSH key you already have instead of gcloud's `~/.ssh/google_compute_engine`.
 - The equivalent `gcloud` command is printed before connecting, so the session can be reproduced by hand.
 
 ### Browse and manage GCS storage
@@ -134,7 +135,7 @@ Configurations are best created and edited with **Manage configurations**. They 
     { "name": "my-bucket-dev", "displayName": "Development" }
   ],
   "defaultBucket": "my-bucket-dev",
-  "ssh": { "tunnelThroughIap": false }
+  "ssh": { "tunnelThroughIap": false, "keyFile": "~/.ssh/id_ed25519" }
 }
 ```
 
@@ -151,6 +152,7 @@ Configurations are best created and edited with **Manage configurations**. They 
 | `buckets` | Array of available buckets (optional). |
 | `defaultBucket` | Default bucket for storage operations. |
 | `ssh.tunnelThroughIap` | Connect over SSH through Identity-Aware Proxy (optional, default `false`). Needed for VMs without an external IP. |
+| `ssh.keyFile` | Private SSH key for `gcloud compute ssh` (optional). An absolute path, or one starting with `~/`; the public key must sit next to it as `<file>.pub`, in OpenSSH format. When absent, gcloud uses `~/.ssh/google_compute_engine`. Without OS Login, gcloud adds the public key to the instance or project SSH metadata on first use. The tool tells gcloud never to regenerate this key pair: a broken pair stops the connection instead. |
 
 ### Settings file
 
@@ -194,7 +196,7 @@ Required roles:
 
 The identity directory holds only the ADC file, not credentials of gcloud's own. The tool hands that file to `gcloud compute ssh` through gcloud's `auth/credential_file_override` property, and sets `core/account` to the account it carries — the service account, when the identity impersonates one — so no second login is needed and `~/.config/gcloud` is never touched. That property is undocumented, so a future gcloud release may change how it works.
 
-`gcloud compute ssh` keeps its key pair in `~/.ssh/google_compute_engine`, shared by every identity. With OS Login the public key is registered on the profile of the account that connects; without it, gcloud adds the key to the instance or project metadata.
+`gcloud compute ssh` uses the key pair in `~/.ssh/google_compute_engine`, shared by every identity, unless `ssh.keyFile` names another one. With OS Login the public key is registered on the profile of the account that connects; without it, gcloud adds the key to the instance or project metadata.
 
 #### Service account impersonation (recommended)
 

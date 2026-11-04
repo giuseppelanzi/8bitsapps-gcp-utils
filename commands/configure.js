@@ -5,6 +5,7 @@ const configLoader = require("../utils/configLoader.js");
 const editor = require("../utils/configEditor.js");
 const paths = require("../utils/paths.js");
 const gcpAuth = require("../utils/gcpAuth.js");
+const gcloud = require("../utils/gcloud.js");
 const authCommand = require("./auth.js");
 const ui = require("../utils/ui.js");
 //
@@ -152,7 +153,7 @@ function orCancel(value) {
 /**
  * Asks a wizard text question. ENTER keeps the default, "-" clears it, ESC cancels the wizard.
  * An empty default is passed as undefined, otherwise inquirer prints "()".
- * @param {{message: string, default?: string, validate: function}} question - Question.
+ * @param {{message: string, default?: string, filter?: function, validate: function}} question - Question; filter defaults to configEditor.normalizeAnswer.
  * @returns {Promise<string>} The normalized answer.
  * @throws {WizardCancelled} On ESC.
  */
@@ -162,10 +163,36 @@ async function askText(question) {
     name: "value",
     message: question.message,
     default: question.default || undefined,
-    filter: editor.normalizeAnswer,
+    filter: question.filter || editor.normalizeAnswer,
     validate: question.validate
   }]);
   return orCancel(value);
+}
+//
+/**
+ * Asks for the private key of gcloud compute ssh, and warns when the key pair is not usable.
+ * inquirer runs the filter on the default as well when ENTER is pressed: the value
+ * shown is kept as it is, so a saved path never loses a backslash it really has.
+ * A missing key is only a warning, since it may live on a drive not mounted right now.
+ * @param {string} current - Current ssh.keyFile value, empty for none.
+ * @returns {Promise<string>} The path as typed, normalized, or an empty string for gcloud's default.
+ * @throws {WizardCancelled} On ESC.
+ */
+async function askKeyFile(current) {
+  const keyFile = await askText({
+    message: "SSH private key file (optional; without it gcloud uses ~/.ssh/google_compute_engine):",
+    default: current,
+    filter: text => (current && text === current ? text : editor.normalizeKeyFileAnswer(text)),
+    validate: editor.validateKeyFile
+  });
+  if (keyFile) {
+    const problem = await gcloud.describeSshKeyProblem(paths.expandHome(keyFile));
+    if (problem) {
+      ui.showWarning(problem);
+      ui.writeInline(ui.formatGray("The path is kept: SSH connections stop with this message until the key pair is fixed.\n"));
+    }
+  }
+  return keyFile;
 }
 //
 /**
@@ -321,6 +348,7 @@ async function collectAnswers({ mode, source, name, sourceName }) {
   //
   ui.showSectionHeader("SSH");
   const tunnelThroughIap = orCancel(await askYesNo("Connect to VMs through IAP (needed for VMs without an external IP)?", editor.tunnelsThroughIap(source)));
+  const keyFile = await askKeyFile(editor.sshKeyFile(source));
   let removeCredentialsFile;
   if (source.credentialsFile) {
     ui.showSectionHeader("Legacy key");
@@ -338,6 +366,7 @@ async function collectAnswers({ mode, source, name, sourceName }) {
     defaultFirewallRule,
     fixedIPAddresses: editor.parseList(fixedIPAddresses).map(editor.normalizeCidr),
     tunnelThroughIap,
+    keyFile,
     removeCredentialsFile
   });
   return { name: configName, configuration, identities, selfName };
