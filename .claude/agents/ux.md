@@ -30,7 +30,7 @@ Note: the network/firewall command (`updateFirewall.js`) has no UX interaction â
 | File | Owned sections |
 |---|---|
 | `gcpUtils.js` | `showMainMenu()`, `showConfigMenu()` (it waits for a key when no configuration exists), `waitForKeypress()`. |
-| `commands/vmSsh.js` | `showRunningVMList()`, the list loop in `execute()`, and the flow of `connectToInstance()` (identity and status checks, account fallback, routing of the exit outcome). `connectToInstance()` is shared with the janitor and never throws. |
+| `commands/vmSsh.js` | `showRunningVMList()`, the list loop in `execute()`, and the flow of `connectToInstance()` (identity, status and key pair checks, account fallback, routing of the exit outcome). `resolveKeyFile()` expands `ssh.keyFile` and checks the key pair: `execute()` calls it before listing the VMs, since a broken pair fails every VM alike, and `connectToInstance()` again for the janitor. `connectToInstance()` is shared with the janitor and never throws. |
 | `commands/configure.js` | `askChoice()`, `askYesNo()`, `askText()` and the other `askâ€¦()` functions, the identity defaults (`describeLoginState()`, `adcAuthDefaults()`, `authDefaults()`), the wizard (`collectAnswers()`, `runWizard()`: modes `create`, `edit`, `duplicate`), the menu loop in `execute()`, and the delete and duplicate flows. `createConfiguration()` is shared with `init.js`. |
 | `commands/init.js` | The prompt flow of `execute()`: wizard offered when no configuration exists, example written only on "No", `true` returned only when a configuration was saved. |
 
@@ -88,6 +88,7 @@ Configuration options:
 
 Configuration options are those of inquirer's `input`. Conventions of the configuration wizard:
 - `filter: configEditor.normalizeAnswer`: trims the answer and turns `-` into `""`, so an optional field can be cleared while ENTER keeps the default.
+- The SSH key file uses `configEditor.normalizeKeyFileAnswer` instead, which also drops surrounding quotes and Finder's backslash escapes. inquirer runs the filter on the default too when ENTER is pressed, so `askKeyFile()` returns an answer equal to the current value unfiltered.
 - An empty default is passed as `undefined`, otherwise inquirer prints `()`.
 - In `listWithEscape`, back and delete are on by default: `askChoice()` turns them off (`enableBack: false`, `deleteFilter: () => false`) unless the flow needs them.
 

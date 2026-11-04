@@ -1,4 +1,5 @@
 const net = require("net");
+const path = require("path");
 const util = require("util");
 const paths = require("./paths.js");
 //
@@ -15,6 +16,13 @@ const PREFIX_PATTERN = /^(0|[1-9]\d*)$/;
 // Order of the keys in a written configuration. Keys not listed here follow, in their original order.
 const TOP_LEVEL_ORDER = ["auth", "defaultProjectId", "defaultFirewallRule", "defaultFixedIPAddresses", "buckets", "defaultBucket", "ssh"];
 const AUTH_ORDER = ["identity", "account", "impersonateServiceAccount", "quotaProject"];
+const SSH_ORDER = ["tunnelThroughIap", "keyFile"];
+//
+// A pair of matching quotes around a whole answer, as left by pasting a quoted path.
+const QUOTED_PATTERN = /^(["'])(.*)\1$/s;
+//
+// A backslash escape, as left by dragging a file from Finder into the terminal.
+const ESCAPE_PATTERN = /\\(.)/gs;
 //
 // --- Answers. ---
 //
@@ -27,6 +35,26 @@ const AUTH_ORDER = ["identity", "account", "impersonateServiceAccount", "quotaPr
 function normalizeAnswer(text) {
   const trimmed = String(text ?? "").trim();
   return trimmed === CLEAR_MARKER ? "" : trimmed;
+}
+//
+/**
+ * Normalizes a typed key file path, after normalizeAnswer().
+ * Removes a pair of quotes around the whole path; outside Windows, an unquoted path
+ * also loses its backslash escapes, so a file dragged from Finder works as typed.
+ * Windows keeps backslashes, which are its path separator.
+ * @param {string} text - Raw answer.
+ * @returns {string} Normalized path, or an empty string to clear the field.
+ */
+function normalizeKeyFileAnswer(text) {
+  const answer = normalizeAnswer(text);
+  const quoted = QUOTED_PATTERN.exec(answer);
+  if (quoted) {
+    return quoted[2];
+  }
+  if (process.platform === "win32") {
+    return answer;
+  }
+  return answer.replace(ESCAPE_PATTERN, "$1");
 }
 //
 /**
@@ -183,6 +211,25 @@ function validateCidrList(value) {
   return invalid.length === 0 || `Invalid address or range: ${invalid.join(", ")}.`;
 }
 //
+/**
+ * Validates an optional private key path. Only the form is checked here: whether
+ * the files exist is gcloud.describeSshKeyProblem()'s job, and only a warning.
+ * @param {string} value - Answer, already normalized.
+ * @returns {true|string} True, or the message to show.
+ */
+function validateKeyFile(value) {
+  if (!value) {
+    return true;
+  }
+  if (value === "~" || /[\\/]$/.test(value)) {
+    return "Enter the private key file, not a folder, or \"-\" to clear.";
+  }
+  if (value.endsWith(".pub")) {
+    return "Enter the private key, not the .pub file next to it, or \"-\" to clear.";
+  }
+  return path.isAbsolute(paths.expandHome(value)) || "Enter an absolute path, or one starting with ~/, or \"-\" to clear.";
+}
+//
 // --- Reading a configuration. ---
 //
 /**
@@ -235,6 +282,15 @@ function fixedRanges(configuration) {
  */
 function tunnelsThroughIap(configuration) {
   return Boolean(configuration.ssh && configuration.ssh.tunnelThroughIap);
+}
+//
+/**
+ * Returns the private key a configuration hands to gcloud compute ssh.
+ * @param {object} configuration - Configuration object.
+ * @returns {string} The ssh.keyFile value as written, or an empty string for gcloud's default.
+ */
+function sshKeyFile(configuration) {
+  return asText((configuration.ssh || {}).keyFile);
 }
 //
 // --- Building a configuration. ---
@@ -307,7 +363,7 @@ function orderKeys(source, order) {
  * an absent key stays absent, [] stays [], "" stays "". Keys the wizard does not
  * manage are kept as they are.
  * @param {object} original - Configuration being edited or duplicated, {} for a new one.
- * @param {{defaultProjectId: string, identity: string, account: string, impersonateServiceAccount: string, quotaProject?: string, buckets: string[], defaultFirewallRule: string, fixedIPAddresses: string[], tunnelThroughIap: boolean, removeCredentialsFile?: boolean}} answers - Wizard answers; quotaProject is undefined when not asked.
+ * @param {{defaultProjectId: string, identity: string, account: string, impersonateServiceAccount: string, quotaProject?: string, buckets: string[], defaultFirewallRule: string, fixedIPAddresses: string[], tunnelThroughIap: boolean, keyFile: string, removeCredentialsFile?: boolean}} answers - Wizard answers; quotaProject is undefined when not asked.
  * @returns {object} The configuration to save.
  */
 function buildConfiguration(original, answers) {
@@ -336,6 +392,20 @@ function buildConfiguration(original, answers) {
     const ssh = result.ssh && typeof result.ssh === "object" ? result.ssh : {};
     ssh.tunnelThroughIap = answers.tunnelThroughIap;
     result.ssh = ssh;
+  }
+  //
+  // A block left empty by clearing keyFile goes away: an absent block means the defaults too.
+  if (sshKeyFile(result) !== answers.keyFile) {
+    const ssh = result.ssh && typeof result.ssh === "object" ? result.ssh : {};
+    applyText(ssh, "keyFile", answers.keyFile);
+    if (Object.keys(ssh).length > 0) {
+      result.ssh = ssh;
+    } else {
+      delete result.ssh;
+    }
+  }
+  if (result.ssh && typeof result.ssh === "object") {
+    result.ssh = orderKeys(result.ssh, SSH_ORDER);
   }
   if (answers.removeCredentialsFile) {
     delete result.credentialsFile;
@@ -406,6 +476,7 @@ const SUMMARY_FIELDS = [
   { label: "Firewall rule", read: c => asText(c.defaultFirewallRule) },
   { label: "Fixed IPs", read: c => fixedRanges(c).join(", ") },
   { label: "SSH via IAP", read: c => (tunnelsThroughIap(c) ? "yes" : "no") },
+  { label: "SSH key", read: sshKeyFile },
   { label: "Credentials file", read: c => asText(c.credentialsFile) }
 ];
 //
@@ -429,6 +500,7 @@ function describeFields(updated, original) {
 //
 module.exports = {
   normalizeAnswer,
+  normalizeKeyFileAnswer,
   parseList,
   normalizeCidr,
   validateConfigName,
@@ -440,6 +512,7 @@ module.exports = {
   validateFirewallRule,
   validateBucketList,
   validateCidrList,
+  validateKeyFile,
   isNameTaken,
   findName,
   asText,
@@ -447,6 +520,7 @@ module.exports = {
   effectiveBuckets,
   fixedRanges,
   tunnelsThroughIap,
+  sshKeyFile,
   buildConfiguration,
   findIdentityConflicts,
   siblingAuthDefaults,

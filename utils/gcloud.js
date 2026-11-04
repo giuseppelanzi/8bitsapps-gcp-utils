@@ -1,5 +1,6 @@
 const childProcess = require("child_process");
 const fs = require("fs/promises");
+const path = require("path");
 const axios = require("axios");
 const { getGcloudDir, getAdcPath } = require("./paths.js");
 //
@@ -24,6 +25,16 @@ const ADC_NOTICES = [
 // An SSH session must run as the identity of the configuration, not as the shell's.
 const IDENTITY_ENV_PATTERN = /^CLOUDSDK_(AUTH_|BILLING_|CORE_ACCOUNT$)/;
 //
+// An argument a POSIX shell reads as it is, with no quoting.
+const SAFE_ARG_PATTERN = /^[A-Za-z0-9_@%+=:,./-]+$/;
+//
+// A --flag=value argument, split on its first "=" only: a path may contain more.
+const FLAG_VALUE_PATTERN = /^(--[a-z-]+=)(.*)$/s;
+//
+// First line of an OpenSSH public key: key type, then the base64 blob. The type
+// also covers the hardware key types, such as sk-ssh-ed25519@openssh.com.
+const OPENSSH_PUBLIC_KEY_PATTERN = /^(ssh-|ecdsa-|sk-)\S+\s+[A-Za-z0-9+/]+={0,2}(\s|$)/;
+//
 /**
  * Builds the variables that confine gcloud to the identity's own configuration directory.
  * gcloud writes DEBUG logs under CLOUDSDK_CONFIG/logs, and the login flow records
@@ -40,13 +51,41 @@ function baseGcloudEnv(identity) {
 }
 //
 /**
+ * Double quotes a value for a POSIX shell, escaping what stays special inside quotes.
+ * On Windows backslashes are path separators and are left as they are.
+ * @param {string} value - Value to quote.
+ * @returns {string} The quoted value.
+ */
+function quoteShellValue(value) {
+  const special = process.platform === "win32" ? /["$`]/g : /["$`\\]/g;
+  return `"${String(value).replace(special, "\\$&")}"`;
+}
+//
+/**
+ * Renders an argument as the user would type it in a shell.
+ * Only arguments that need it are quoted; of a --flag=value argument, only the value.
+ * @param {string} arg - Argument passed to gcloud.
+ * @returns {string} The argument, quoted if needed.
+ */
+function formatShellArg(arg) {
+  if (SAFE_ARG_PATTERN.test(arg)) {
+    return arg;
+  }
+  const flag = FLAG_VALUE_PATTERN.exec(arg);
+  if (flag) {
+    return `${flag[1]}${quoteShellValue(flag[2])}`;
+  }
+  return quoteShellValue(arg);
+}
+//
+/**
  * Renders environment variables as shell assignments.
- * Values are double quoted, because the configuration directory may contain spaces.
+ * Values are always double quoted, because the configuration directory may contain spaces.
  * @param {object} env - Variables to render.
  * @returns {string} The assignments, space separated.
  */
 function formatEnv(env) {
-  return Object.entries(env).map(([name, value]) => `${name}="${value}"`).join(" ");
+  return Object.entries(env).map(([name, value]) => `${name}=${quoteShellValue(value)}`).join(" ");
 }
 //
 /**
@@ -80,7 +119,10 @@ function formatLoginCommand(auth) {
 /**
  * Builds the gcloud arguments that open an SSH session on a VM instance.
  * Single source of truth for both the executed command and the printed hint.
- * @param {{instance: string, projectId: string, zone: string, tunnelThroughIap: boolean}} session - SSH session.
+ * Without sshKeyFile, gcloud uses its own key pair, ~/.ssh/google_compute_engine.
+ * With it, gcloud is told never to regenerate the pair: a key it finds broken would
+ * otherwise be overwritten on a single confirmation, and it is the user's own key.
+ * @param {{instance: string, projectId: string, zone: string, tunnelThroughIap: boolean, sshKeyFile: string|null}} session - SSH session.
  * @returns {string[]} Arguments for gcloud.
  */
 function buildSshArgs(session) {
@@ -88,7 +130,64 @@ function buildSshArgs(session) {
   if (session.tunnelThroughIap) {
     args.push("--tunnel-through-iap");
   }
+  if (session.sshKeyFile) {
+    args.push(`--ssh-key-file=${session.sshKeyFile}`, "--no-force-key-file-overwrite");
+  }
   return args;
+}
+//
+/**
+ * Checks a private key the way gcloud compute ssh will use it, before gcloud runs.
+ * gcloud reads the public key from <file>.pub and treats an empty or unreadable file
+ * as a broken pair: catching that here gives a clear message instead of gcloud's
+ * failure, which buildSshArgs() turns into an error rather than an overwrite. The
+ * private key is never read, only checked for size and access. Never throws, since
+ * both the wizard and the SSH command call it outside a try: any I/O error becomes
+ * the message.
+ * @param {string} keyFile - Private key path, already expanded.
+ * @returns {Promise<string|null>} What is wrong with the key pair, or null.
+ */
+async function describeSshKeyProblem(keyFile) {
+  if (!path.isAbsolute(keyFile)) {
+    return `SSH key "${keyFile}" must be an absolute path, or start with ~/ (ssh.keyFile).`;
+  }
+  if (keyFile.endsWith(".pub")) {
+    return `SSH key "${keyFile}" is a public key: set ssh.keyFile to the private key next to it.`;
+  }
+  try {
+    const stat = await fs.stat(keyFile);
+    if (stat.isDirectory()) {
+      return `SSH key "${keyFile}" is a folder, not a private key file.`;
+    }
+    if (!stat.isFile()) {
+      return `SSH key "${keyFile}" is not a regular file.`;
+    }
+    if (stat.size === 0) {
+      return `SSH key "${keyFile}" is empty.`;
+    }
+    await fs.access(keyFile, fs.constants.R_OK);
+  } catch (err) {
+    return err.code === "ENOENT" ? `SSH key "${keyFile}" not found.` : `SSH key "${keyFile}" is not readable (${err.code || err.message}).`;
+  }
+  //
+  const publicKeyFile = `${keyFile}.pub`;
+  let firstLine;
+  try {
+    firstLine = (await fs.readFile(publicKeyFile, "utf8")).split(/\r?\n/)[0];
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return `Public key "${publicKeyFile}" not found, and gcloud needs it next to the private key. Create it with: ssh-keygen -y -f ${quoteShellValue(keyFile)} > ${quoteShellValue(publicKeyFile)}`;
+    }
+    return `Public key "${publicKeyFile}" is not readable (${err.code || err.message}).`;
+  }
+  //
+  // The conversion goes through a temporary file: redirecting onto the file being
+  // read would truncate it before ssh-keygen reads it.
+  if (!OPENSSH_PUBLIC_KEY_PATTERN.test(firstLine)) {
+    const converted = `${publicKeyFile}.tmp`;
+    return `Public key "${publicKeyFile}" is not in OpenSSH format. If it is an SSH2 key, convert it with: ssh-keygen -i -f ${quoteShellValue(publicKeyFile)} > ${quoteShellValue(converted)} && mv ${quoteShellValue(converted)} ${quoteShellValue(publicKeyFile)}`;
+  }
+  return null;
 }
 //
 /**
@@ -119,7 +218,7 @@ function buildSshEnv(session) {
  * @returns {string} The equivalent shell command.
  */
 function formatSshCommand(session) {
-  return `${formatEnv(buildSshEnv(session))} gcloud ${buildSshArgs(session).join(" ")}`;
+  return `${formatEnv(buildSshEnv(session))} gcloud ${buildSshArgs(session).map(formatShellArg).join(" ")}`;
 }
 //
 /**
@@ -309,6 +408,7 @@ module.exports = {
   formatLoginCommand,
   buildSshArgs,
   buildSshEnv,
+  describeSshKeyProblem,
   formatSshCommand,
   loginAdc,
   revokeAdc,
