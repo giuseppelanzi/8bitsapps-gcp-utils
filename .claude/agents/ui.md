@@ -22,7 +22,6 @@ Owns all visual presentation: chalk colors, ANSI terminal codes, the banner, for
 | File | Description |
 |---|---|
 | `utils/ui.js` | Shared UI helpers: ANSI terminal ops, progress indicators, formatting, operation log, menu choices, navigation labels, messages. |
-| `commands/init.js` | Init command — initializes global configuration directory with user feedback. |
 
 ## Owned sections in shared files
 
@@ -32,6 +31,9 @@ Owns all visual presentation: chalk colors, ANSI terminal codes, the banner, for
 | `utils/prompts/listWithEscape.js` | ANSI escape sequences for screen clearing (`\x1b[${this.screen.height}A\x1b[J\x1b[G`). |
 | `utils/prompts/filterableList.js` | ANSI escape sequences for screen clearing (`finalizeWithClear`) and cursor visibility (`ui.hideCursor()` / `ui.showCursor()` calls). |
 | `commands/vmSsh.js` | `showSshFailureHints()`, the row cells and column widths of the VM list, and all `ui.*()` calls. |
+| `commands/configure.js` | `showSummary()`, `showIdentityConflicts()`, the row cells and column widths of the configuration menu and of the identity list, and all `ui.*()` calls. |
+| `commands/init.js` | `showNextSteps()`, the example configuration, and all `ui.*()` calls. The prompt flow belongs to UX. |
+| `utils/prompts/inputWithEscape.js` | The screen cleanup on ESC in `onEscape()` (`unmute()`, `screen.clean()`, `extraLinesUnderPrompt` reset): inquirer's own screen manager, no ANSI written by hand. |
 
 ## Color palette
 
@@ -42,7 +44,7 @@ Owns all visual presentation: chalk colors, ANSI terminal codes, the banner, for
 | Brand / dark | `chalk.hex("#E73100")` | Banner lower section. |
 | Success | `chalk.green()` | Upload/create options, success log entries, checkmark symbol. |
 | Error | `chalk.red()` | Error log entries, "exit" indicator, cross symbol. |
-| Warning / loading | `chalk.yellow()` | Loading spinners, "no config" messages, "Load more" row. |
+| Warning / loading | `chalk.yellow()` | Loading spinners, "no config" messages, "Load more" row, new value of a changed field (`formatChange()`). |
 | Info / secondary | `chalk.gray()` | Version number, mode label, "press ENTER" message, info log entries, "(no matches)" placeholder. |
 | Navigation / action | `chalk.cyan()` | Commands to run, "back" indicator, folder names in navigation. |
 | Neutral / white | `chalk.whiteBright.bold()` | "8BitsApps" brand name. |
@@ -68,7 +70,7 @@ process.stdout.write(`\x1b[${this.screen.height}A\x1b[J\x1b[G`);
 | Progress | `showProgress(message)` |
 | Formatting | `formatSize(bytes)`, `getDisplayName(fullPath, prefix)`, `formatGreen(text)`, `formatRed(text)`, `formatYellow(text)`, `formatGray(text)`, `formatDate(isoString)`, `formatDaysAgo(isoString)`, `formatSectionHeader(title)`, `showSectionHeader(title)` |
 | Operation log | `showOperationLog(logs)` |
-| Menu choices | `formatUploadChoice()`, `formatCreateFolderChoice()`, `formatLoadMore(shown, total)`, `formatNoMatches()`, `formatColumns(cells, widths)` |
+| Menu choices | `formatUploadChoice()`, `formatCreateFolderChoice()`, `formatNewChoice(label)`, `formatChange(oldValue, newValue)`, `formatLoadMore(shown, total)`, `formatNoMatches()`, `formatColumns(cells, widths)` |
 | Navigation labels | `formatExitLabel()`, `formatBackLabel()`, `formatFolderLabel(name)` |
 | Messages | `showError(message)`, `showInfo(message)`, `showSuccess(message)`, `showWarning(message)` |
 

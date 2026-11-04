@@ -211,6 +211,27 @@ function formatCreateFolderChoice() {
 }
 //
 /**
+ * Formats a "+ New …" menu choice.
+ * @param {string} label - Choice label, without the leading "+".
+ * @returns {string} Chalk-formatted string.
+ */
+function formatNewChoice(label) {
+  return chalk.green(`+ ${label}`);
+}
+//
+/**
+ * Formats a changed value for a summary, as "old → new".
+ * @param {string} oldValue - Value before the change, empty for none.
+ * @param {string} newValue - Value after the change, empty for none.
+ * @returns {string} Chalk-formatted string.
+ */
+function formatChange(oldValue, newValue) {
+  const before = oldValue ? chalk.gray(oldValue) : chalk.gray("(none)");
+  const after = newValue ? chalk.yellow(newValue) : chalk.yellow("(none)");
+  return `${before} \u2192 ${after}`;
+}
+//
+/**
  * Formats the "load more" menu row.
  * @param {number} shown - Items currently shown.
  * @param {number} total - Total matching items.
@@ -353,6 +374,8 @@ module.exports = {
   // Menu choices.
   formatUploadChoice,
   formatCreateFolderChoice,
+  formatNewChoice,
+  formatChange,
   formatLoadMore,
   formatNoMatches,
   formatColumns,

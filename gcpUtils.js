@@ -53,6 +53,8 @@ async function showConfigMenu() {
   //
   if (configs.length === 0) {
     showError(`No configuration found in ${getConfigurationsDir()}/.`);
+    showInfo("Create one with \"Manage configurations\".");
+    await waitForKeypress();
     return null;
   }
   //
@@ -81,7 +83,7 @@ async function warnOnAuthIssues(configName) {
     const configuration = JSON.parse(await fs.promises.readFile(getConfigPath(configName), "utf8"));
     if (isLegacyKeyAuth(configuration)) {
       showWarning(`Configuration "${configName}" uses a static service account key.`);
-      showWarning("Migrate to \"auth.identity\" and delete the key from the GCP console.");
+      showWarning("Migrate to \"auth.identity\" with Manage configurations, then delete the key from the GCP console.");
       blankLine();
       return;
     }
@@ -93,6 +95,20 @@ async function warnOnAuthIssues(configName) {
   } catch {
     // A broken configuration surfaces later, with a better message.
   }
+}
+//
+/**
+ * Prints the error of a failed command, with a hint when it is an authentication failure.
+ * @param {Error} err - The error thrown by the command.
+ */
+function showCommandError(err) {
+  blankLine();
+  showError(`Error: ${err.message}`);
+  const authHint = describeAuthError(err);
+  if (authHint) {
+    showWarning(authHint);
+  }
+  blankLine();
 }
 //
 /**
@@ -185,7 +201,7 @@ async function main() {
   // Check if initialized.
   if (!(await isInitialized())) {
     showWarning("Configuration not found.");
-    writeInline(`Run ${chalk.cyan("gcpUtils")} after initialization to use the tool.\n`);
+    writeInline("Initialization creates the configuration directory and walks you through your first configuration.\n");
     blankLine();
     //
     const { shouldInit } = await inquirer.prompt([{
@@ -194,12 +210,23 @@ async function main() {
       message: "Would you like to initialize now?",
       default: true
     }]);
-    //
-    if (shouldInit) {
-      const initCmd = commands.find(c => c.name === "init");
-      await initCmd.execute();
+    if (!shouldInit) {
+      return;
     }
-    return;
+    //
+    // Enter the main menu only once a real configuration exists, after the user has read the output.
+    const initCmd = commands.find(c => c.name === "init");
+    let created = false;
+    try {
+      created = await initCmd.execute();
+    } catch (err) {
+      showCommandError(err);
+    }
+    if (!created) {
+      return;
+    }
+    blankLine();
+    await waitForKeypress();
   }
   //
   // Wait for update check with timeout (max 2s).
@@ -233,7 +260,11 @@ async function main() {
     //
     if (cmdName === "init") {
       const initCmd = commands.find(c => c.name === "init");
-      await initCmd.execute();
+      try {
+        await initCmd.execute();
+      } catch (err) {
+        showCommandError(err);
+      }
       blankLine();
       blankLine();
       await waitForKeypress();
@@ -243,6 +274,17 @@ async function main() {
     const cmd = commands.find(c => c.name === cmdName);
     if (!cmd) {
       showError(`Command not found: ${cmdName}`);
+      continue;
+    }
+    //
+    // Standalone commands pick their configurations themselves.
+    if (cmd.standalone) {
+      try {
+        await cmd.execute();
+      } catch (err) {
+        showCommandError(err);
+        await waitForKeypress();
+      }
       continue;
     }
     //
@@ -264,13 +306,7 @@ async function main() {
       showSuccess("Completed.");
       blankLine();
     } catch (err) {
-      blankLine();
-      showError(`Error: ${err.message}`);
-      const authHint = describeAuthError(err);
-      if (authHint) {
-        showWarning(authHint);
-      }
-      blankLine();
+      showCommandError(err);
     }
     await waitForKeypress();
   }

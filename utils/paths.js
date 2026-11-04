@@ -53,14 +53,35 @@ function getCredentialsDir() {
 }
 //
 /**
+ * Tells whether a name is safe to use as a file or directory name.
+ * Shared by identity names and configuration names.
+ * @param {*} name - Candidate name.
+ * @returns {boolean} True if the name only uses letters, digits, dot, dash or underscore.
+ */
+function isValidName(name) {
+  return typeof name === "string" && IDENTITY_PATTERN.test(name) && name !== "." && name !== "..";
+}
+//
+/**
  * Validates an auth identity name used as a directory name.
  * @param {string} identity - Identity name.
  * @throws {Error} If the identity is missing or would escape its parent directory.
  */
 function assertValidIdentity(identity) {
-  if (!identity || !IDENTITY_PATTERN.test(identity) || identity === "." || identity === "..") {
+  if (!isValidName(identity)) {
     throw new Error(`Invalid auth identity "${identity}". Use letters, digits, dot, dash or underscore.`);
   }
+}
+//
+/**
+ * Returns the directory that holds one gcloud configuration directory per identity.
+ * @returns {string} Absolute path to the gcloud root directory.
+ */
+function getGcloudRootDir() {
+  if (isLocalMode()) {
+    return path.join(process.cwd(), LOCAL_CREDS_DIR, GCLOUD_DIR);
+  }
+  return path.join(getGlobalConfigDir(), GCLOUD_DIR);
 }
 //
 /**
@@ -71,10 +92,7 @@ function assertValidIdentity(identity) {
  */
 function getGcloudDir(identity) {
   assertValidIdentity(identity);
-  if (isLocalMode()) {
-    return path.join(process.cwd(), LOCAL_CREDS_DIR, GCLOUD_DIR, identity);
-  }
-  return path.join(getGlobalConfigDir(), GCLOUD_DIR, identity);
+  return path.join(getGcloudRootDir(), identity);
 }
 //
 /**
@@ -119,6 +137,8 @@ module.exports = {
   getGlobalConfigDir,
   getConfigurationsDir,
   getCredentialsDir,
+  isValidName,
+  getGcloudRootDir,
   getGcloudDir,
   getAdcPath,
   getConfigPath,
