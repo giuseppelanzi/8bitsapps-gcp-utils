@@ -107,7 +107,7 @@ class Compute {
   //
   /**
    * Lists all VM instances in the project.
-   * @returns {Promise<Array<{name: string, machineType: string, status: string, zone: string, lastStart: string, creationTimestamp: string, disks: Array<{source: string, deviceName: string}>, networkInterfaces: Array}>>}
+   * @returns {Promise<Array<{name: string, machineType: string, status: string, zone: string, lastStart: string, creationTimestamp: string, disks: Array<{source: string, deviceName: string}>, networkInterfaces: Array, externalIp: string}>>}
    */
   async listInstances() {
     await this.loadConfiguration();
@@ -140,7 +140,8 @@ class Compute {
             source: d.source || "",
             deviceName: d.deviceName || ""
           })),
-          networkInterfaces: instance.networkInterfaces || []
+          networkInterfaces: instance.networkInterfaces || [],
+          externalIp: this.extractExternalIp(instance.networkInterfaces)
         });
       }
     }
@@ -361,6 +362,22 @@ class Compute {
     }
     const parts = users[0].split("/");
     return parts[parts.length - 1];
+  }
+  //
+  /**
+   * Extracts the first external IP from the network interfaces of an instance.
+   * @param {Array} networkInterfaces - Raw network interfaces from the API.
+   * @returns {string} External IP, or an empty string when the instance has none.
+   */
+  extractExternalIp(networkInterfaces) {
+    for (const nic of networkInterfaces || []) {
+      for (const accessConfig of nic.accessConfigs || []) {
+        if (accessConfig.natIP) {
+          return accessConfig.natIP;
+        }
+      }
+    }
+    return "";
   }
 }
 //

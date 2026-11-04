@@ -11,5 +11,8 @@
     "8.8.8.8/32"
   ],
   "buckets" : [],
-  "defaultBucket": "YOUR_BUCKET_NAME"
+  "defaultBucket": "YOUR_BUCKET_NAME",
+  "ssh": {
+    "tunnelThroughIap": false
+  }
 }

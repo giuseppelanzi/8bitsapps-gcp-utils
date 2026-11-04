@@ -31,6 +31,7 @@ Owns all visual presentation: chalk colors, ANSI terminal codes, the banner, for
 | `gcpUtils.js` | `showBanner()`, `showUpdateNotification()`, `boxWidth` constant. |
 | `utils/prompts/listWithEscape.js` | ANSI escape sequences for screen clearing (`\x1b[${this.screen.height}A\x1b[J\x1b[G`). |
 | `utils/prompts/filterableList.js` | ANSI escape sequences for screen clearing (`finalizeWithClear`) and cursor visibility (`ui.hideCursor()` / `ui.showCursor()` calls). |
+| `commands/vmSsh.js` | `showSshFailureHints()`, the row cells and column widths of the VM list, and all `ui.*()` calls. |
 
 ## Color palette
 

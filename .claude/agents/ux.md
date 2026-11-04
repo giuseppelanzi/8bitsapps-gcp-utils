@@ -29,6 +29,7 @@ Note: the network/firewall command (`updateFirewall.js`) has no UX interaction â
 | File | Owned sections |
 |---|---|
 | `gcpUtils.js` | `showMainMenu()`, `showConfigMenu()`, `waitForKeypress()`. |
+| `commands/vmSsh.js` | `showRunningVMList()`, the list loop in `execute()`, and the flow of `connectToInstance()` (identity and status checks, account fallback, routing of the exit outcome). `connectToInstance()` is shared with the janitor and never throws. |
 
 ## Responsibilities
 

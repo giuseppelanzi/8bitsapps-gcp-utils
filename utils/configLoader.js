@@ -1,5 +1,5 @@
 const fs = require("fs/promises");
-const { getConfigurationsDir } = require("./paths.js");
+const { getConfigurationsDir, getConfigPath } = require("./paths.js");
 //
 const CONFIG_PREFIX = "gcp-options-";
 const CONFIG_SUFFIX = ".json";
@@ -21,4 +21,13 @@ async function listConfigurations() {
   }
 }
 //
-module.exports = { listConfigurations };
+/**
+ * Loads a configuration file.
+ * @param {string} configName - Configuration name.
+ * @returns {Promise<object>} Parsed configuration.
+ */
+async function loadConfiguration(configName) {
+  return JSON.parse(await fs.readFile(getConfigPath(configName), "utf8"));
+}
+//
+module.exports = { listConfigurations, loadConfiguration };

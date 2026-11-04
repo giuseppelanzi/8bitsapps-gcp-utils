@@ -12,7 +12,7 @@ Owns the interaction flow, navigation state machine, and prompt design for the G
 
 | File | Owned sections |
 |---|---|
-| `commands/gcpJanitor.js` | `showJanitorMenu()`, `showInventoryMenu()`, `showVMList()`, `showDiskListForVM()`, `showDiskInventory()`, `showSnapshotInventory()`, `showAddressInventory()`, `showZombieActionMenu()`, `promptExceptionReason()`, and the navigation state machine inside `command.execute()` (while-loops, action routing, filter replay for CSV export). |
+| `commands/gcpJanitor.js` | `showJanitorMenu()`, `showInventoryMenu()`, `showVMList()`, `showVMActionMenu()`, `showDiskInventory()`, `showSnapshotInventory()`, `showAddressInventory()`, `showZombieActionMenu()`, `promptExceptionReason()`, and the navigation state machine inside `command.execute()` (while-loops, action routing, filter replay for CSV export). |
 
 ## Prompt functions
 
@@ -34,12 +34,12 @@ Owns the interaction flow, navigation state machine, and prompt design for the G
 - `enableBack: true`; `options` is `{maxItems, pageStep}`.
 - Returns `{selected, filterTerm}` where `selected` is `string|null|{action: "back"}` (VM name, `"__export_csv__"`, back, or null) and `filterTerm` is the active filter to replay on the full set.
 
-### `showDiskListForVM(attachedDisks)`
+### `showVMActionMenu(detail)`
 
-- Disk selection within VM detail view.
-- Returns `{action: "back"}` immediately if no disks.
+- Action menu within VM detail view: the attached disks, numbered `1..N` like the "Attached Disks" table, then `N+1. Connect via SSH` when the VM is `RUNNING`, with a separator only when both are present.
+- Returns `{action: "back"}` immediately if there is nothing to choose.
 - `enableBack: true`.
-- Returns `string|null|{action: "back"}` (disk name, back, or null).
+- Returns `string|null|{action: "back"}` (disk name, `"__ssh__"`, back, or null).
 
 ### `showDiskInventory(disks, computeInstance, options)` / `showSnapshotInventory(snapshots, options)` / `showAddressInventory(addresses, computeInstance, options)`
 
@@ -66,7 +66,7 @@ Owns the interaction flow, navigation state machine, and prompt design for the G
 1. User narrows the VM list by typing (substring match on name, case-insensitive, live).
 2. User selects a VM from the filtered list.
 3. Detail card shows: VM data, attached disks, static IPs.
-4. User can select a disk to drill down into its snapshots.
+4. User can select a disk to drill down into its snapshots, or connect to a running VM over SSH through `connectToInstance()` of `commands/vmSsh.js`; the detail card is shown again when the session ends.
 5. Navigation: ← goes back one level, ESC first clears an active filter, then exits.
 6. Empty states: "No disks attached.", "No snapshots found.", "No VM instances found."
 7. CSV export replays `filterTerm` on the full cached set, so it exports exactly what the user was seeing; a filter matching nothing warns instead of exporting.
@@ -91,7 +91,7 @@ Owns the interaction flow, navigation state machine, and prompt design for the G
 ```
 Level 0: Janitor Menu (enableBack: false)
   ├── "inventory" → Level 1: Inventory Menu (enableBack: true)
-  │     ├── "vms" → showVMList (live filter) → VM detail → disk drill-down
+  │     ├── "vms" → showVMList (live filter) → VM detail → disk drill-down | SSH session
   │     ├── "disks" → showDiskInventory (live filter)
   │     ├── "snapshots" → showSnapshotInventory (live filter)
   │     ├── "ips" → showAddressInventory (live filter)
@@ -117,10 +117,11 @@ All resources are fetched once via `Promise.all` on first use and cached for the
 | Inventory menu | `back` | Return to janitor menu. |
 | VM list | `null` | Exit janitor command. |
 | VM list | `back` | Return to inventory menu. |
-| VM list | VM name | Show VM detail card + disk list. |
-| Disk list | `null` | Exit janitor command. |
-| Disk list | `back` | Return to VM list. |
-| Disk list | disk name | Show disk snapshots table. |
+| VM list | VM name | Show VM detail card + action menu. |
+| VM action menu | `null` | Exit janitor command. |
+| VM action menu | `back` | Return to VM list. |
+| VM action menu | disk name | Show disk snapshots table. |
+| VM action menu | `"__ssh__"` | Open an SSH session, then show the detail card again. |
 | Zombie menu | `null` | Exit janitor command. |
 | Zombie menu | `back` | Return to janitor menu. |
 | Zombie menu | resource | Prompt reason, mark exception, remove from list. |

@@ -1,16 +1,16 @@
 # GCP Utils
 
-Interactive CLI tool for managing Google Cloud Platform (GCP) services, including firewall and storage operations.
+Interactive CLI tool for managing Google Cloud Platform (GCP) services, including firewall and storage operations, a Compute Engine inventory, and SSH access to VMs.
 
 ## Features
 
-### Update Firewall with current IP
+### Connect to a VM over SSH
 
-Automatically updates a GCP firewall rule with your current public IP address. Useful for development environments with dynamic IPs that need access to firewall-protected resources.
+Opens a shell on a running Compute Engine VM through `gcloud compute ssh`, as the identity of the selected configuration, so that access is governed by the Google account instead of personal keys copied onto every machine.
 
-- Automatically detects current public IP.
-- Preserves configured fixed IP addresses.
-- Adds current IP to the firewall rule's sourceRanges.
+- Pick a running VM from a filterable list, or choose **Connect via SSH** from the VM detail card of the janitor.
+- Set `ssh.tunnelThroughIap` to reach VMs through Identity-Aware Proxy, including those without an external IP.
+- The equivalent `gcloud` command is printed before connecting, so the session can be reproduced by hand.
 
 ### Browse and manage GCS storage
 
@@ -26,6 +26,24 @@ Interactive navigator for Google Cloud Storage:
 - Delete folders from GCS (recursive).
 - Support for multiple buckets per configuration.
 
+### GCP Janitor - Resource Analyzer
+
+Read-only inventory of the Compute Engine resources of a project, with a report of the "zombie" items that keep costing money without being used. Nothing is ever deleted or modified on GCP.
+
+- **Resource Inventory**: filterable lists of VM instances, persistent disks, snapshots and static IP addresses.
+- VM detail card with machine type, status, attached disks and static IPs; select a disk to see its snapshots, or choose **Connect via SSH**.
+- Export the VM list, as currently filtered, to a timestamped CSV file in the current directory.
+- **Zombie Items & Cleanup**: reports unattached disks, VMs stopped for longer than `janitor.stoppedVmThresholdDays`, snapshots whose source disk no longer exists, and reserved static IPs that nothing uses.
+- Mark a zombie as an exception, with an optional reason, to hide it from later reports. Exceptions are saved per configuration in `janitor-exceptions-<config>.json`, next to the configuration files.
+
+### Update Firewall with current IP
+
+Automatically updates a GCP firewall rule with your current public IP address. Useful for development environments with dynamic IPs that need access to firewall-protected resources.
+
+- Automatically detects current public IP.
+- Preserves configured fixed IP addresses.
+- Adds current IP to the firewall rule's sourceRanges.
+
 ### Manage authentication
 
 Logs in with short-lived Application Default Credentials (ADC), one identity per configuration, so that several GCP accounts from different organizations can be used side by side without static service account keys.
@@ -37,7 +55,7 @@ Sets up the global configuration directory (`~/.8bitsapps-gcp-utils/`) with the 
 ## Requirements
 
 - **Node.js**: >= 18.0.0 (Node.js 22 LTS recommended)
-- **Google Cloud SDK**: `gcloud` in `PATH`, used for the login flow.
+- **Google Cloud SDK**: `gcloud` in `PATH`, used for the login flow and for SSH.
 
 ## Installation
 
@@ -102,7 +120,8 @@ Create a JSON file in `~/.8bitsapps-gcp-utils/configurations/` (e.g., `gcp-optio
     { "name": "my-bucket-prod", "displayName": "Production" },
     { "name": "my-bucket-dev", "displayName": "Development" }
   ],
-  "defaultBucket": "my-bucket-dev"
+  "defaultBucket": "my-bucket-dev",
+  "ssh": { "tunnelThroughIap": false }
 }
 ```
 
@@ -118,6 +137,7 @@ Create a JSON file in `~/.8bitsapps-gcp-utils/configurations/` (e.g., `gcp-optio
 | `defaultFixedIPAddresses` | Array of fixed IPs to always keep in the rule. |
 | `buckets` | Array of available buckets (optional). |
 | `defaultBucket` | Default bucket for storage operations. |
+| `ssh.tunnelThroughIap` | Connect over SSH through Identity-Aware Proxy (optional, default `false`). Needed for VMs without an external IP. |
 
 ### Settings file
 
@@ -155,6 +175,13 @@ Required roles:
 - **Firewall**: `Compute Security Admin` or `Compute Network Admin`
 - **Storage**: `Storage Object Admin`
 - **Compute Engine (janitor)**: `Compute Viewer`
+- **SSH**: `Compute Viewer`, plus `Compute OS Login` (`roles/compute.osLogin`) on VMs with OS Login, or the permission to set instance or project metadata on VMs without it. Through IAP, also `IAP-secured Tunnel User` (`roles/iap.tunnelResourceAccessor`) and a firewall rule allowing `tcp:22` from `35.235.240.0/20`.
+
+#### SSH sessions
+
+The identity directory holds only the ADC file, not credentials of gcloud's own. The tool hands that file to `gcloud compute ssh` through gcloud's `auth/credential_file_override` property, and sets `core/account` to the account it carries — the service account, when the identity impersonates one — so no second login is needed and `~/.config/gcloud` is never touched. That property is undocumented, so a future gcloud release may change how it works.
+
+`gcloud compute ssh` keeps its key pair in `~/.ssh/google_compute_engine`, shared by every identity. With OS Login the public key is registered on the profile of the account that connects; without it, gcloud adds the key to the instance or project metadata.
 
 #### Service account impersonation (recommended)
 
@@ -172,7 +199,7 @@ Configurations with `credentialsFile` keep working and print a deprecation warni
 gcpUtils
 ```
 
-Navigate menus with arrow keys. Press `ESC` to go back or exit. In filterable lists (storage browser, janitor), type to narrow the list as you go: `ESC` first clears an active filter, then exits; the left arrow goes back one level when the filter is empty.
+Navigate menus with arrow keys. Press `ESC` to go back or exit. In filterable lists (storage browser, janitor, SSH), type to narrow the list as you go: `ESC` first clears an active filter, then exits; the left arrow goes back one level when the filter is empty.
 
 ## License
 
