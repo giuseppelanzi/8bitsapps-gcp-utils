@@ -24,13 +24,14 @@ Note: the network/firewall command (`updateFirewall.js`) has no UX interaction �
 | `utils/prompts/listWithEscape.js` | Custom Inquirer prompt with ESC, back arrow, and delete key support. |
 | `utils/prompts/filterableList.js` | List prompt with incremental type-to-filter and load-more pagination (ANSI escape sequences inside it are UI territory). |
 | `utils/prompts/inputWithEscape.js` | Input prompt with ESC support (the screen cleanup inside `onEscape()` is UI territory). |
+| `utils/prompts/passwordWithEscape.js` | Masked input prompt with ESC support, built on `inputWithEscape`; see its contract below. |
 
 ## Owned sections in shared files
 
 | File | Owned sections |
 |---|---|
 | `gcpUtils.js` | `showMainMenu()`, `showConfigMenu()` (it waits for a key when no configuration exists), `waitForKeypress()`. |
-| `commands/vmSsh.js` | `showRunningVMList()`, the list loop in `execute()`, and the flow of `connectToInstance()` (identity, status and key pair checks, account fallback, routing of the exit outcome). `resolveKeyFile()` expands `ssh.keyFile` and checks the key pair: `execute()` calls it before listing the VMs, since a broken pair fails every VM alike, and `connectToInstance()` again for the janitor. `connectToInstance()` is shared with the janitor and never throws. |
+| `commands/vmConnect.js` | `showRunningVMList()` (OS column, searchable), the list loop in `execute()`, and the flow of `connectToInstance()`: identity and status checks, then `connectSsh()` for a Linux VM or `connectRdp()` for a Windows one (`guestOs`). `connectToInstance()` is shared with the janitor and never throws. `resolveKeyFile()` expands `ssh.keyFile` and checks the key pair: `execute()` calls it after listing the VMs and stops there only when none of them is Windows, since a broken pair fails every Linux VM alike; `connectSsh()` calls it again. `connectRdp()` re-validates `rdp.username` (configurations can be edited by hand), stops on a direct connection without external IP, and otherwise goes through `connectRdpThroughIap()`: tunnel, relay, `.rdp` file, client, then `watchSession()` while `listenForCancelKeys()` listens for ESC, q or Ctrl+C (it resumes the stdin a prompt left paused). Everything is closed in a `finally` whose guards are declared before the `try`, and `restoreTerminal()` removes the listener explicitly. On macOS, `offerRdpPassword()` reads the saved RDP password and copies it to the clipboard only after `openRdpFile()`, so a connection that already failed never touches the keychain; any keychain or clipboard error is a warning and the session goes on. Through IAP the clipboard is cleared at `onStarted` (which resets `changeCount` first, inside a timer: `clearSecret()` never rejects) and in the `finally`, before the tunnel closes. |
 | `commands/configure.js` | `askChoice()`, `askYesNo()`, `askText()` and the other `ask…()` functions, the identity defaults (`describeLoginState()`, `adcAuthDefaults()`, `authDefaults()`), the wizard (`collectAnswers()`, `runWizard()`: modes `create`, `edit`, `duplicate`), the menu loop in `execute()`, and the delete and duplicate flows. `createConfiguration()` is shared with `init.js`. |
 | `commands/init.js` | The prompt flow of `execute()`: wizard offered when no configuration exists, example written only on "No", `true` returned only when a configuration was saved. |
 
@@ -79,6 +80,10 @@ Configuration options:
 - `state` (object): out-param; receives `state.filterTerm` on every rebuild (used to replay the filter, e.g. CSV export).
 - `formatLoadMore` / `noMatchesText` (functions): injected by callers from `utils/ui.js`, so the prompt imports no chalk.
 
+## passwordWithEscape contract
+
+As `inputWithEscape` (ESC returns `null`), with the value masked: one `*` per character while typing, `[hidden]` once answered (nothing for an empty answer), masked next to the spinner of async validators too, and never put back on the line after a validation error. No default is ever shown. The mask goes through `opt.transformer`, so inquirer's own `render()` keeps the layout; colors come from `utils/ui.js`, no chalk.
+
 ## inputWithEscape contract
 
 | Input | Return value | Meaning |
@@ -89,6 +94,8 @@ Configuration options:
 Configuration options are those of inquirer's `input`. Conventions of the configuration wizard:
 - `filter: configEditor.normalizeAnswer`: trims the answer and turns `-` into `""`, so an optional field can be cleared while ENTER keeps the default.
 - The SSH key file uses `configEditor.normalizeKeyFileAnswer` instead, which also drops surrounding quotes and Finder's backslash escapes. inquirer runs the filter on the default too when ENTER is pressed, so `askKeyFile()` returns an answer equal to the current value unfiltered.
+- The RDP section asks `rdp.tunnelThroughIap` with `orCancel(await askYesNo(...))`, like every yes/no question (ESC must cancel the wizard, never save `null`), and `rdp.username` with `askText()` and `configEditor.validateRdpUsername`.
+- The RDP password, on macOS only (`secrets.isSupported()`), is asked last in the RDP section with `passwordWithEscape`, unfiltered (spaces may belong to it). `readPasswordState()` tells with `hasRdpPassword()`, never reading the secret, whether there is one to start from: the configuration's own in edit, the source's in duplicate, none in create; a keychain error is a warning and counts as none. `askRdpPassword()` maps the answer to an action: empty → `keep` (edit), `copy` (duplicate with a source password) or `none`; `-` → `clear` (edit with a password), `keep` (edit without), `none` (create, duplicate); text → `set`. `describePasswordRow()` adds the summary row with real states (`saved`, `replaced`, `copied`, empty), "before" only in edit; a changed password alone counts as a change. `runWizard()` returns `rdpPassword` and the duplicate's `sourceName`, and `saveAndOfferLogin()` applies the action through `applyRdpPassword()` only after the file is saved; `none` also drops an orphan item left at the same path. `deleteConfiguration()` removes the item too, as a warning on error, before `offerOrphanRevoke()`.
 - An empty default is passed as `undefined`, otherwise inquirer prints `()`.
 - In `listWithEscape`, back and delete are on by default: `askChoice()` turns them off (`enableBack: false`, `deleteFilter: () => false`) unless the flow needs them.
 

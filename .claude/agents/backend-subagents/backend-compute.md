@@ -39,6 +39,7 @@ Owns the Compute utility class — the GCP Compute Engine SDK wrapper for instan
 | `disks` | Array of `{source, deviceName}` for attached disks. |
 | `networkInterfaces` | Raw network interface data. |
 | `externalIp` | First external IP (`natIP`) of the network interfaces, or `""` when the VM has none. |
+| `guestOs` | `"windows"` or `"linux"`, from `detectGuestOs()`. Decides whether the VM is reached over RDP or SSH. |
 
 ### Persistent Disks
 
@@ -91,6 +92,7 @@ Owns the Compute utility class — the GCP Compute Engine SDK wrapper for instan
 | `extractAttachedVMName(users)` | `string` | Extracts VM name from disk users array. |
 | `extractUserName(users)` | `string` | Extracts resource name from address users array. |
 | `extractExternalIp(networkInterfaces)` | `string` | Extracts the first external IP from raw network interfaces, or `""`. |
+| `detectGuestOs(disks)` | `string` | `"windows"` when the boot disk carries a license of `windows-cloud` or `windows-sql-cloud` (full or relative URL), or the `WINDOWS` guest OS feature, as gcloud decides; `"linux"` otherwise. Pure data method. |
 
 ### Key behaviors
 

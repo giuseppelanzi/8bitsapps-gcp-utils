@@ -35,6 +35,20 @@ const FLAG_VALUE_PATTERN = /^(--[a-z-]+=)(.*)$/s;
 // also covers the hardware key types, such as sk-ssh-ed25519@openssh.com.
 const OPENSSH_PUBLIC_KEY_PATTERN = /^(ssh-|ecdsa-|sk-)\S+\s+[A-Za-z0-9+/]+={0,2}(\s|$)/;
 //
+// The line gcloud start-iap-tunnel prints once its local port accepts connections.
+const TUNNEL_PORT_PATTERN = /Listening on port \[(\d+)\]/;
+//
+// How long an IAP tunnel may take to print its port, before it is given up.
+const TUNNEL_START_TIMEOUT_MS = 30000;
+//
+// How long a tunnel may take to exit after SIGTERM, before it is killed.
+const TUNNEL_KILL_GRACE_MS = 5000;
+//
+// Output kept while looking for the port line, and stderr kept for the error of a failed tunnel.
+const TUNNEL_SCAN_CHARS = 1000;
+const TUNNEL_STDERR_CHARS = 8000;
+const TUNNEL_STDERR_LINES = 20;
+//
 /**
  * Builds the variables that confine gcloud to the identity's own configuration directory.
  * gcloud writes DEBUG logs under CLOUDSDK_CONFIG/logs, and the login flow records
@@ -191,16 +205,17 @@ async function describeSshKeyProblem(keyFile) {
 }
 //
 /**
- * Builds the environment that runs gcloud as the identity of an SSH session.
+ * Builds the environment that runs gcloud as the identity of a session: an SSH
+ * session or an IAP tunnel.
  * The identity directory holds only the ADC file, not credentials of gcloud's own,
  * so the file reaches gcloud through the credential file override. The override
  * leaves core/account empty, while OS Login reads the user from it: it is set too.
  * auth/impersonate_service_account is never set, because an impersonated ADC file
  * already acts as the service account and gcloud would impersonate it twice.
- * @param {{identity: string, account: string, quotaProject: string|null}} session - SSH session.
+ * @param {{identity: string, account: string, quotaProject: string|null}} session - SSH session or IAP tunnel.
  * @returns {object} The CLOUDSDK_* variables only, without the inherited environment.
  */
-function buildSshEnv(session) {
+function buildSessionEnv(session) {
   const env = {
     ...baseGcloudEnv(session.identity),
     CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: getAdcPath(session.identity),
@@ -214,11 +229,31 @@ function buildSshEnv(session) {
 //
 /**
  * Renders the SSH command as the user would type it in a shell.
- * @param {object} session - SSH session, see buildSshArgs() and buildSshEnv().
+ * @param {object} session - SSH session, see buildSshArgs() and buildSessionEnv().
  * @returns {string} The equivalent shell command.
  */
 function formatSshCommand(session) {
-  return `${formatEnv(buildSshEnv(session))} gcloud ${buildSshArgs(session).map(formatShellArg).join(" ")}`;
+  return `${formatEnv(buildSessionEnv(session))} gcloud ${buildSshArgs(session).map(formatShellArg).join(" ")}`;
+}
+//
+/**
+ * Builds the gcloud arguments that open an IAP tunnel to a port of a VM instance.
+ * Single source of truth for both the executed command and the printed hint.
+ * The local port is 0, so gcloud picks a free one and prints it.
+ * @param {{instance: string, projectId: string, zone: string, remotePort: number}} tunnel - IAP tunnel.
+ * @returns {string[]} Arguments for gcloud.
+ */
+function buildIapTunnelArgs(tunnel) {
+  return ["compute", "start-iap-tunnel", tunnel.instance, String(tunnel.remotePort), "--local-host-port=localhost:0", `--project=${tunnel.projectId}`, `--zone=${tunnel.zone}`];
+}
+//
+/**
+ * Renders the IAP tunnel command as the user would type it in a shell.
+ * @param {object} tunnel - IAP tunnel, see buildIapTunnelArgs() and buildSessionEnv().
+ * @returns {string} The equivalent shell command.
+ */
+function formatIapTunnelCommand(tunnel) {
+  return `${formatEnv(buildSessionEnv(tunnel))} gcloud ${buildIapTunnelArgs(tunnel).map(formatShellArg).join(" ")}`;
 }
 //
 /**
@@ -380,7 +415,7 @@ function inheritedEnvWithoutIdentity() {
  * Opens an interactive SSH session through gcloud compute ssh.
  * The child owns the terminal until it exits. Ctrl+C reaches it through the tty,
  * so this process ignores SIGINT meanwhile instead of quitting the whole tool.
- * @param {object} session - SSH session, see buildSshArgs() and buildSshEnv().
+ * @param {object} session - SSH session, see buildSshArgs() and buildSessionEnv().
  * @returns {Promise<{code: number|null, signal: string|null}>} How gcloud exited.
  */
 function runComputeSsh(session) {
@@ -390,7 +425,7 @@ function runComputeSsh(session) {
     process.on("SIGINT", ignoreInterrupt);
     const child = childProcess.spawn("gcloud", buildSshArgs(session), {
       stdio: "inherit",
-      env: { ...inheritedEnvWithoutIdentity(), ...buildSshEnv(session) }
+      env: { ...inheritedEnvWithoutIdentity(), ...buildSessionEnv(session) }
     });
     child.on("error", err => {
       cleanup();
@@ -403,15 +438,131 @@ function runComputeSsh(session) {
   });
 }
 //
+/**
+ * Returns the last lines of a captured stream, for an error message.
+ * @param {string} text - Captured text.
+ * @returns {string} At most TUNNEL_STDERR_LINES lines, trimmed.
+ */
+function tailLines(text) {
+  return text.trim().split(/\r?\n/).slice(-TUNNEL_STDERR_LINES).join("\n");
+}
+//
+/**
+ * Builds the error of a tunnel that did not open, carrying what gcloud printed on stderr.
+ * @param {string} message - Error message.
+ * @param {string} stderr - Tail of gcloud's stderr, possibly empty.
+ * @returns {Error} The error, with a stderr property.
+ */
+function tunnelError(message, stderr) {
+  const err = new Error(message);
+  err.stderr = stderr;
+  return err;
+}
+//
+/**
+ * Opens an IAP tunnel to a port of a VM instance, as the identity of the tunnel.
+ * gcloud prints "Listening on port [N]." on stdout without flushing it, so in a pipe
+ * the line could wait for a full buffer: PYTHONUNBUFFERED makes it arrive at once.
+ * The line is looked for on both streams, and both keep flowing for the whole life of
+ * the process, so a full pipe never blocks gcloud. The child is not detached: it stays
+ * in the terminal's process group, and closing the terminal ends it with this tool.
+ * @param {object} tunnel - IAP tunnel, see buildIapTunnelArgs() and buildSessionEnv().
+ * @param {{timeoutMs?: number}} [options] - Startup timeout, TUNNEL_START_TIMEOUT_MS by default.
+ * @returns {Promise<{port: number, exited: Promise<{code: number|null, signal: string|null, stderr: string}>, stop: function(): Promise<void>}>} The local port, the exit of gcloud, and how to close the tunnel.
+ * @throws {Error} If gcloud is missing, exits before printing the port, or times out; err.stderr carries its last lines.
+ */
+function startIapTunnel(tunnel, options = {}) {
+  const timeoutMs = options.timeoutMs || TUNNEL_START_TIMEOUT_MS;
+  const child = childProcess.spawn("gcloud", buildIapTunnelArgs(tunnel), {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...inheritedEnvWithoutIdentity(), ...buildSessionEnv(tunnel), PYTHONUNBUFFERED: "1" }
+  });
+  let stderrText = "";
+  let spawnError = null;
+  const scanned = { stdout: "", stderr: "" };
+  //
+  // Created at spawn, so a tunnel that already exited is still awaited correctly.
+  // The error listener stays for the whole life of the child: an unhandled "error" would end the tool.
+  const exited = new Promise(resolveExit => {
+    child.on("error", err => { spawnError = spawnError || err; });
+    child.once("close", (code, signal) => resolveExit({ code, signal, stderr: tailLines(stderrText) }));
+  });
+  //
+  /**
+   * Terminates gcloud, then kills it if it is still running after TUNNEL_KILL_GRACE_MS.
+   * @returns {Promise<void>}
+   */
+  async function stop() {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGTERM");
+      const killTimer = setTimeout(() => child.kill("SIGKILL"), TUNNEL_KILL_GRACE_MS);
+      await exited;
+      clearTimeout(killTimer);
+      return;
+    }
+    await exited;
+  }
+  //
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const startTimer = setTimeout(() => {
+      settled = true;
+      stop().then(() => reject(tunnelError(`The IAP tunnel did not open within ${Math.round(timeoutMs / 1000)} seconds.`, tailLines(stderrText))));
+    }, timeoutMs);
+    //
+    /**
+     * Collects a chunk of output and resolves once the port line shows up on either stream.
+     * @param {string} name - "stdout" or "stderr".
+     * @param {string} chunk - Output chunk.
+     */
+    function onOutput(name, chunk) {
+      if (name === "stderr") {
+        stderrText = (stderrText + chunk).slice(-TUNNEL_STDERR_CHARS);
+      }
+      if (settled) {
+        return;
+      }
+      scanned[name] = (scanned[name] + chunk).slice(-TUNNEL_SCAN_CHARS);
+      const match = TUNNEL_PORT_PATTERN.exec(scanned[name]);
+      if (match) {
+        settled = true;
+        clearTimeout(startTimer);
+        resolve({ port: Number(match[1]), exited, stop });
+      }
+    }
+    //
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", chunk => onOutput("stdout", chunk));
+    child.stderr.on("data", chunk => onOutput("stderr", chunk));
+    exited.then(({ code }) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(startTimer);
+      if (spawnError) {
+        reject(spawnError.code === "ENOENT" ? new Error(GCLOUD_MISSING) : spawnError);
+        return;
+      }
+      const stderr = tailLines(stderrText);
+      reject(tunnelError(stderr || `gcloud exited with code ${code} before opening the tunnel.`, stderr));
+    });
+  });
+}
+//
 module.exports = {
   buildLoginArgs,
   formatLoginCommand,
   buildSshArgs,
-  buildSshEnv,
+  buildSessionEnv,
+  buildIapTunnelArgs,
   describeSshKeyProblem,
   formatSshCommand,
+  formatIapTunnelCommand,
   loginAdc,
   revokeAdc,
   resolveActiveAccount,
-  runComputeSsh
+  runComputeSsh,
+  startIapTunnel
 };

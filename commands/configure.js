@@ -1,20 +1,30 @@
 const inquirer = require("inquirer");
 const ListWithEscapePrompt = require("../utils/prompts/listWithEscape.js");
 const InputWithEscapePrompt = require("../utils/prompts/inputWithEscape.js");
+const PasswordWithEscapePrompt = require("../utils/prompts/passwordWithEscape.js");
 const configLoader = require("../utils/configLoader.js");
 const editor = require("../utils/configEditor.js");
 const paths = require("../utils/paths.js");
 const gcpAuth = require("../utils/gcpAuth.js");
 const gcloud = require("../utils/gcloud.js");
+const secrets = require("../utils/secrets.js");
 const authCommand = require("./auth.js");
 const ui = require("../utils/ui.js");
 //
 // Register custom prompts, so the module also works when init.js imports it.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
 inquirer.registerPrompt("inputWithEscape", InputWithEscapePrompt);
+inquirer.registerPrompt("passwordWithEscape", PasswordWithEscapePrompt);
 //
 // Value of the "+ New identity" row: a Symbol cannot collide with an identity name.
 const NEW_IDENTITY = Symbol("newIdentity");
+//
+// Answer that removes the RDP password, as "-" clears the other optional fields.
+const CLEAR_ANSWER = "-";
+//
+// Label of the RDP password row in the summary, placed after the other RDP rows.
+const PASSWORD_LABEL = "RDP password";
+const RDP_LABELS = ["RDP via IAP", "RDP user"];
 //
 /**
  * Thrown by a wizard question when the user presses ESC.
@@ -167,6 +177,132 @@ async function askText(question) {
     validate: question.validate
   }]);
   return orCancel(value);
+}
+//
+/**
+ * Tells whether the keychain holds an RDP password to start from, without extracting it:
+ * the configuration's own when editing, the source's when duplicating, none when creating,
+ * so an item left behind by a file deleted by hand never shows up as saved.
+ * A keychain error is a warning: the wizard keeps the answers already given.
+ * @param {string} mode - "create", "edit" or "duplicate".
+ * @param {string|null} name - Configuration being edited.
+ * @param {string|null} sourceName - Configuration being duplicated.
+ * @returns {Promise<boolean>} True if there is a password to start from.
+ */
+async function readPasswordState(mode, name, sourceName) {
+  if (mode === "create") {
+    return false;
+  }
+  try {
+    return await secrets.hasRdpPassword(mode === "edit" ? name : sourceName);
+  } catch (err) {
+    ui.showWarning(`${err.message} Going on as if there were none.`);
+    return false;
+  }
+}
+//
+/**
+ * Asks for the RDP password, masked. The answer is kept as typed, spaces included,
+ * since they may belong to the password. What it means depends on the mode:
+ * - empty: keeps the saved one (edit), copies the source's (duplicate), none (create);
+ * - "-": removes the saved one (edit, or keeps nothing to remove), skips the copy (duplicate);
+ * - anything else: the new password.
+ * @param {string} mode - "create", "edit" or "duplicate".
+ * @param {boolean} hasPassword - Result of readPasswordState().
+ * @returns {Promise<{action: string, value?: string}>} "keep", "set", "clear", "copy" or "none".
+ * @throws {WizardCancelled} On ESC.
+ */
+async function askRdpPassword(mode, hasPassword) {
+  let message = "RDP password (optional, kept in the macOS keychain):";
+  if (mode === "edit" && hasPassword) {
+    message = "RDP password (ENTER keeps the saved one, \"-\" removes it):";
+  } else if (mode === "duplicate" && hasPassword) {
+    message = "RDP password (ENTER copies the source's, \"-\" leaves it out):";
+  }
+  const { value } = await inquirer.prompt([{ type: "passwordWithEscape", name: "value", message }]);
+  const answer = orCancel(value);
+  if (answer !== "" && answer !== CLEAR_ANSWER) {
+    return { action: "set", value: answer };
+  }
+  if (mode === "edit") {
+    return { action: answer === CLEAR_ANSWER && hasPassword ? "clear" : "keep" };
+  }
+  return { action: mode === "duplicate" && hasPassword && answer === "" ? "copy" : "none" };
+}
+//
+/**
+ * Builds the summary row of the RDP password, with real states before and after, so
+ * showSummary() can render it as "before → after" like the other fields. Only an edit
+ * has a "before": describeFields() gets no original when creating or duplicating.
+ * @param {string} mode - "create", "edit" or "duplicate".
+ * @param {boolean} hasPassword - Result of readPasswordState().
+ * @param {{action: string}} rdpPassword - Result of askRdpPassword().
+ * @returns {{label: string, value: string, before: string, changed: boolean}} The row.
+ */
+function describePasswordRow(mode, hasPassword, rdpPassword) {
+  const before = mode === "edit" && hasPassword ? "saved" : "";
+  const after = {
+    keep: before,
+    set: before ? "replaced" : "saved",
+    copy: "copied",
+    clear: "",
+    none: ""
+  };
+  return {
+    label: PASSWORD_LABEL,
+    value: after[rdpPassword.action],
+    before,
+    changed: ["set", "copy", "clear"].includes(rdpPassword.action)
+  };
+}
+//
+/**
+ * Adds the RDP password row to the summary rows, after the other RDP rows.
+ * A row empty both before and after is left out, as describeFields() does.
+ * @param {Array} rows - Rows from configEditor.describeFields().
+ * @param {object} row - Row from describePasswordRow().
+ * @returns {Array} The rows, with the password row in place.
+ */
+function withPasswordRow(rows, row) {
+  if (!row.value && !row.before) {
+    return rows;
+  }
+  const lastRdp = rows.map(r => r.label).reduce((found, label, i) => (RDP_LABELS.includes(label) ? i : found), -1);
+  const at = lastRdp === -1 ? rows.length : lastRdp + 1;
+  return [...rows.slice(0, at), row, ...rows.slice(at)];
+}
+//
+/**
+ * Applies the RDP password answer to the keychain, once the configuration is saved,
+ * so a discarded wizard never leaves anything behind. A new configuration left
+ * without a password ("none") also drops an item left behind with the same path.
+ * A keychain error is shown and does not undo the saved configuration.
+ * @param {string} name - Saved configuration.
+ * @param {{action: string, value?: string}|undefined} rdpPassword - Result of askRdpPassword(), undefined outside macOS.
+ * @param {string|null} sourceName - Source of a duplicate.
+ * @returns {Promise<void>}
+ */
+async function applyRdpPassword(name, rdpPassword, sourceName) {
+  if (!rdpPassword) {
+    return;
+  }
+  try {
+    if (rdpPassword.action === "set") {
+      await secrets.setRdpPassword(name, rdpPassword.value);
+      ui.showSuccess("RDP password saved in the keychain.");
+    } else if (rdpPassword.action === "clear") {
+      await secrets.deleteRdpPassword(name);
+      ui.showSuccess("RDP password removed from the keychain.");
+    } else if (rdpPassword.action === "copy") {
+      if (await secrets.copyRdpPassword(sourceName, name)) {
+        ui.showSuccess(`RDP password of "${sourceName}" copied in the keychain.`);
+      }
+    } else if (rdpPassword.action === "none") {
+      await secrets.deleteRdpPassword(name);
+    }
+  } catch (err) {
+    ui.showError(err.message);
+  }
 }
 //
 /**
@@ -349,6 +485,22 @@ async function collectAnswers({ mode, source, name, sourceName }) {
   ui.showSectionHeader("SSH");
   const tunnelThroughIap = orCancel(await askYesNo("Connect to VMs through IAP (needed for VMs without an external IP)?", editor.tunnelsThroughIap(source)));
   const keyFile = await askKeyFile(editor.sshKeyFile(source));
+  //
+  ui.showSectionHeader("RDP");
+  const rdpTunnelThroughIap = orCancel(await askYesNo("Connect to Windows VMs over RDP through IAP?", editor.rdpTunnelsThroughIap(source)));
+  const rdpUsername = await askText({
+    message: "Windows user for RDP (optional; the client asks otherwise):",
+    default: editor.rdpUsername(source),
+    validate: editor.validateRdpUsername
+  });
+  //
+  // The password lives in the keychain, never in the file: only macOS has one here.
+  let rdpPassword;
+  let hasRdpPassword = false;
+  if (secrets.isSupported()) {
+    hasRdpPassword = await readPasswordState(mode, name, sourceName);
+    rdpPassword = await askRdpPassword(mode, hasRdpPassword);
+  }
   let removeCredentialsFile;
   if (source.credentialsFile) {
     ui.showSectionHeader("Legacy key");
@@ -367,15 +519,19 @@ async function collectAnswers({ mode, source, name, sourceName }) {
     fixedIPAddresses: editor.parseList(fixedIPAddresses).map(editor.normalizeCidr),
     tunnelThroughIap,
     keyFile,
+    rdpTunnelThroughIap,
+    rdpUsername,
     removeCredentialsFile
   });
-  return { name: configName, configuration, identities, selfName };
+  return { name: configName, configuration, identities, selfName, rdpPassword, hasRdpPassword };
 }
 //
 /**
  * Runs the wizard, shows the summary and asks whether to save.
+ * The RDP password answer and the source of a duplicate travel with the result,
+ * since the keychain is updated only after the configuration is saved.
  * @param {{mode: string, source: object, name?: string, sourceName?: string}} context - "create", "edit" or "duplicate", and the starting configuration.
- * @returns {Promise<{name: string, configuration: object, hasConflicts: boolean}|null>} The configuration to save, or null if discarded.
+ * @returns {Promise<{name: string, configuration: object, hasConflicts: boolean, rdpPassword?: object, sourceName: string|null}|null>} The configuration to save, or null if discarded.
  */
 async function runWizard({ mode, source, name = null, sourceName = null }) {
   let result;
@@ -389,14 +545,15 @@ async function runWizard({ mode, source, name = null, sourceName = null }) {
     throw err;
   }
   //
-  const { configuration, identities, selfName } = result;
+  const { configuration, identities, selfName, rdpPassword, hasRdpPassword } = result;
   const auth = configuration.auth;
   const conflicts = editor.findIdentityConflicts(identities, auth.identity, {
     account: auth.account,
     impersonateServiceAccount: auth.impersonateServiceAccount
   }, selfName);
   const isEdit = mode === "edit";
-  const rows = editor.describeFields(configuration, isEdit ? source : undefined);
+  const fieldRows = editor.describeFields(configuration, isEdit ? source : undefined);
+  const rows = rdpPassword ? withPasswordRow(fieldRows, describePasswordRow(mode, hasRdpPassword, rdpPassword)) : fieldRows;
   ui.showSectionHeader("Summary");
   if (isEdit && rows.every(row => !row.changed)) {
     ui.showInfo("No changes, nothing to save.");
@@ -419,19 +576,27 @@ async function runWizard({ mode, source, name = null, sourceName = null }) {
     ui.showInfo("Discarded, nothing saved.");
     return null;
   }
-  return { name: result.name, configuration, hasConflicts: conflicts.length > 0 };
+  return {
+    name: result.name,
+    configuration,
+    hasConflicts: conflicts.length > 0,
+    rdpPassword,
+    sourceName: mode === "duplicate" ? sourceName : null
+  };
 }
 //
 /**
- * Saves a configuration, then offers to log in when its credentials do not fit it.
+ * Saves a configuration and applies the RDP password answer to the keychain, then
+ * offers to log in when its credentials do not fit it.
  * With an identity conflict the offer defaults to No, since that login would switch
  * the other configurations using the identity.
- * @param {{name: string, configuration: object, hasConflicts: boolean}} result - Result of runWizard().
+ * @param {{name: string, configuration: object, hasConflicts: boolean, rdpPassword?: object, sourceName?: string|null}} result - Result of runWizard().
  * @returns {Promise<void>}
  */
-async function saveAndOfferLogin({ name, configuration, hasConflicts }) {
+async function saveAndOfferLogin({ name, configuration, hasConflicts, rdpPassword, sourceName = null }) {
   const filePath = await configLoader.saveConfiguration(name, configuration);
   ui.showSuccess(`Saved: ${filePath}`);
+  await applyRdpPassword(name, rdpPassword, sourceName);
   const reason = gcpAuth.describeLoginNeed(configuration);
   if (!reason) {
     return;
@@ -549,6 +714,17 @@ async function deleteConfiguration(entry) {
     return;
   }
   ui.showSuccess(`Deleted configuration "${entry.name}".`);
+  //
+  // A keychain error must not skip the revoke offer nor end the menu.
+  if (secrets.isSupported()) {
+    try {
+      if (await secrets.deleteRdpPassword(entry.name)) {
+        ui.showInfo("Its RDP password was removed from the keychain.");
+      }
+    } catch (err) {
+      ui.showWarning(err.message);
+    }
+  }
   await offerOrphanRevoke(entry.configuration && entry.configuration.auth);
 }
 //

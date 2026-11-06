@@ -22,6 +22,9 @@ const exampleConfig = {
   defaultBucket: "YOUR_BUCKET_NAME",
   ssh: {
     tunnelThroughIap: false
+  },
+  rdp: {
+    tunnelThroughIap: false
   }
 };
 //
