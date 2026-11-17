@@ -30,10 +30,11 @@ Owns all visual presentation: chalk colors, ANSI terminal codes, the banner, for
 | `gcpUtils.js` | `showBanner()`, `showUpdateNotification()`, `boxWidth` constant. |
 | `utils/prompts/listWithEscape.js` | ANSI escape sequences for screen clearing (`\x1b[${this.screen.height}A\x1b[J\x1b[G`). |
 | `utils/prompts/filterableList.js` | ANSI escape sequences for screen clearing (`finalizeWithClear`) and cursor visibility (`ui.hideCursor()` / `ui.showCursor()` calls). |
-| `commands/vmSsh.js` | `showSshFailureHints()`, the row cells and column widths of the VM list, and all `ui.*()` calls. |
-| `commands/configure.js` | `showSummary()`, `showIdentityConflicts()`, the row cells and column widths of the configuration menu and of the identity list, and all `ui.*()` calls. |
+| `commands/vmConnect.js` | `showSshFailureHints()`, `showRdpFailureHints()` (IAP role on error `4033`, firewall `tcp:3389` on `4003`, both otherwise), `showTunnelFailure()` (auth hint first, RDP hints only with a stderr), the row cells and column widths of the VM list (OS column through `ui.formatGuestOs()`), the clipboard message of `offerRdpPassword()`, and all `ui.*()` calls. |
+| `commands/configure.js` | `showSummary()` (the RDP password row shows states, `saved`, `replaced`, `copied`, never the password), `showIdentityConflicts()`, the row cells and column widths of the configuration menu and of the identity list, and all `ui.*()` calls. |
 | `commands/init.js` | `showNextSteps()`, the example configuration, and all `ui.*()` calls. The prompt flow belongs to UX. |
 | `utils/prompts/inputWithEscape.js` | The screen cleanup on ESC in `onEscape()` (`unmute()`, `screen.clean()`, `extraLinesUnderPrompt` reset): inquirer's own screen manager, no ANSI written by hand. |
+| `utils/prompts/passwordWithEscape.js` | The look of the mask: `*` per character while typing, `ui.formatGray("[hidden]")` once answered. |
 
 ## Color palette
 
@@ -68,7 +69,7 @@ process.stdout.write(`\x1b[${this.screen.height}A\x1b[J\x1b[G`);
 |---|---|
 | ANSI helpers | `clearLine()`, `clearLineAbove()`, `overwriteLineAbove(message)`, `writeInline(text)`, `hideCursor()`, `showCursor()` |
 | Progress | `showProgress(message)` |
-| Formatting | `formatSize(bytes)`, `getDisplayName(fullPath, prefix)`, `formatGreen(text)`, `formatRed(text)`, `formatYellow(text)`, `formatGray(text)`, `formatDate(isoString)`, `formatDaysAgo(isoString)`, `formatSectionHeader(title)`, `showSectionHeader(title)` |
+| Formatting | `formatSize(bytes)`, `getDisplayName(fullPath, prefix)`, `formatGreen(text)`, `formatRed(text)`, `formatYellow(text)`, `formatGray(text)`, `formatDate(isoString)`, `formatDaysAgo(isoString)`, `formatGuestOs(guestOs)` (the one place that names the OS: "Windows" or "Linux"), `formatSectionHeader(title)`, `showSectionHeader(title)` |
 | Operation log | `showOperationLog(logs)` |
 | Menu choices | `formatUploadChoice()`, `formatCreateFolderChoice()`, `formatNewChoice(label)`, `formatChange(oldValue, newValue)`, `formatLoadMore(shown, total)`, `formatNoMatches()`, `formatColumns(cells, widths)` |
 | Navigation labels | `formatExitLabel()`, `formatBackLabel()`, `formatFolderLabel(name)` |

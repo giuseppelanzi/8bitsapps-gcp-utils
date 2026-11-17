@@ -8,7 +8,7 @@ const { loadExceptions, isException, addException } = require("../utils/exceptio
 const ui = require("../utils/ui.js");
 const csvExporter = require("../utils/csvExporter.js");
 const paths = require("../utils/paths.js");
-const vmSsh = require("./vmSsh.js");
+const vmConnect = require("./vmConnect.js");
 //
 // Register custom prompts.
 inquirer.registerPrompt("listWithEscape", ListWithEscapePrompt);
@@ -136,10 +136,11 @@ async function showVMList(instances, options) {
 //
 /**
  * Shows the actions of the VM detail view: the attached disks, to drill down into
- * their snapshots, and the SSH connection when the VM is running.
- * Disks keep the numbers of the "Attached Disks" table, and the SSH action follows them.
+ * their snapshots, and the connection when the VM is running: RDP for a Windows VM,
+ * SSH for any other.
+ * Disks keep the numbers of the "Attached Disks" table, and the connect action follows them.
  * @param {{instance: object, attachedDisks: Array}} detail - VM detail data.
- * @returns {Promise<string|null|{action: string}>} Disk name, "__ssh__", back, or null on ESC.
+ * @returns {Promise<string|null|{action: string}>} Disk name, "__connect__", back, or null on ESC.
  */
 async function showVMActionMenu(detail) {
   const { instance, attachedDisks } = detail;
@@ -151,7 +152,8 @@ async function showVMActionMenu(detail) {
     if (choices.length > 0) {
       choices.push(new inquirer.Separator("\u2500"));
     }
-    choices.push({ name: `${attachedDisks.length + 1}. Connect via SSH`, value: "__ssh__" });
+    const protocol = instance.guestOs === "windows" ? "RDP" : "SSH";
+    choices.push({ name: `${attachedDisks.length + 1}. Connect via ${protocol}`, value: "__connect__" });
   }
   //
   if (choices.length === 0) {
@@ -261,6 +263,7 @@ function renderVMDetailCard(detail) {
   vmTable.push(
     ["Name", instance.name],
     ["Machine Type", instance.machineType],
+    ["OS", ui.formatGuestOs(instance.guestOs)],
     ["Status", formatStatusColor(instance.status)],
     ["Zone", instance.zone],
     ["External IP", instance.externalIp || "-"],
@@ -645,7 +648,7 @@ const command = {
               //
               renderVMDetailCard(detail);
               //
-              // Disk drill-down and SSH loop (Level 3 -> Level 4).
+              // Disk drill-down and connection loop (Level 3 -> Level 4).
               while (true) {
                 const actionChoice = await showVMActionMenu(detail);
                 //
@@ -656,9 +659,9 @@ const command = {
                   break; // Back to VM list.
                 }
                 //
-                // SSH session: it never throws, then the detail card comes back.
-                if (actionChoice === "__ssh__") {
-                  await vmSsh.connectToInstance(configName, detail.instance);
+                // SSH or RDP session: it never throws, then the detail card comes back.
+                if (actionChoice === "__connect__") {
+                  await vmConnect.connectToInstance(configName, detail.instance);
                   renderVMDetailCard(detail);
                   continue;
                 }

@@ -12,6 +12,12 @@ process.emitWarning = function (warning, ...args) {
   return originalEmitWarning.call(process, warning, ...args);
 };
 //
+// Projects whose licenses mark a Windows image, as in gcloud's WINDOWS_IMAGE_PROJECTS.
+const WINDOWS_LICENSE_PROJECTS = ["windows-cloud", "windows-sql-cloud"];
+//
+// The project of a license URL, whether full (https://…/projects/…) or relative (projects/…).
+const LICENSE_PROJECT_PATTERN = /(?:^|\/)projects\/([^/]+)\/global\/licenses\//;
+//
 /**
  * Compute Engine operations class.
  * Provides methods to list instances, disks, snapshots, and addresses.
@@ -107,7 +113,7 @@ class Compute {
   //
   /**
    * Lists all VM instances in the project.
-   * @returns {Promise<Array<{name: string, machineType: string, status: string, zone: string, lastStart: string, creationTimestamp: string, disks: Array<{source: string, deviceName: string}>, networkInterfaces: Array, externalIp: string}>>}
+   * @returns {Promise<Array<{name: string, machineType: string, status: string, zone: string, lastStart: string, creationTimestamp: string, disks: Array<{source: string, deviceName: string}>, networkInterfaces: Array, externalIp: string, guestOs: string}>>}
    */
   async listInstances() {
     await this.loadConfiguration();
@@ -141,7 +147,8 @@ class Compute {
             deviceName: d.deviceName || ""
           })),
           networkInterfaces: instance.networkInterfaces || [],
-          externalIp: this.extractExternalIp(instance.networkInterfaces)
+          externalIp: this.extractExternalIp(instance.networkInterfaces),
+          guestOs: this.detectGuestOs(instance.disks)
         });
       }
     }
@@ -378,6 +385,28 @@ class Compute {
       }
     }
     return "";
+  }
+  //
+  /**
+   * Tells the guest operating system of an instance from its boot disk, as gcloud does.
+   * The disk is Windows when it carries a license of a Windows image project, or the
+   * WINDOWS guest OS feature, which also covers imported and BYOL images. Any other
+   * instance counts as Linux.
+   * Pure data method — no API calls.
+   * @param {Array} disks - Raw attached disks from the API.
+   * @returns {string} "windows" or "linux".
+   */
+  detectGuestOs(disks) {
+    const bootDisk = (disks || []).find(d => d.boot);
+    if (!bootDisk) {
+      return "linux";
+    }
+    const hasWindowsLicense = (bootDisk.licenses || []).some(license => {
+      const match = LICENSE_PROJECT_PATTERN.exec(license || "");
+      return Boolean(match) && WINDOWS_LICENSE_PROJECTS.includes(match[1]);
+    });
+    const hasWindowsFeature = (bootDisk.guestOsFeatures || []).some(feature => feature && feature.type === "WINDOWS");
+    return hasWindowsLicense || hasWindowsFeature ? "windows" : "linux";
   }
 }
 //
