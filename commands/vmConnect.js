@@ -41,11 +41,13 @@ const IAP_BACKEND_UNREACHABLE = /\b4003\b/;
  * gcloud passes on the exit code of the last remote command and has already printed
  * its own errors, so the code alone cannot tell a failed connection from a remote
  * command that failed: the hints stay conditional.
- * @param {number} code - Exit code of gcloud.
+ * @param {number} [code] - Exit code of gcloud, if the caller has not shown the failure already.
  * @param {boolean} tunnelThroughIap - Whether the session went through IAP.
  */
 function showSshFailureHints(code, tunnelThroughIap) {
-  ui.showInfo(`gcloud exited with code ${code}.`);
+  if (typeof code === "number") {
+    ui.showInfo(`gcloud exited with code ${code}.`);
+  }
   const hints = [
     "If the connection did not open, check:",
     "  - OS Login: roles/compute.osLogin for the account."
@@ -104,9 +106,10 @@ function showTunnelFailure(err) {
  * The OS column tells which protocol the connection will use, and is searchable.
  * @param {Array} instances - Running instances.
  * @param {{maxItems: number, pageStep: number}} options - Window options.
+ * @param {string} [message] - Prompt message, the one of this command by default.
  * @returns {Promise<object|null>} Selected instance, or null on ESC.
  */
-async function showRunningVMList(instances, options) {
+async function showRunningVMList(instances, options, message = "Select VM to connect (type to filter, ESC to exit):") {
   const digits = String(instances.length).length;
   const widths = [
     digits + 1,
@@ -123,7 +126,7 @@ async function showRunningVMList(instances, options) {
   const { selected } = await inquirer.prompt([{
     type: "filterableList",
     name: "selected",
-    message: "Select VM to connect (type to filter, ESC to exit):",
+    message,
     source,
     pageWindow: options.maxItems,
     pageStep: options.pageStep,
@@ -194,6 +197,35 @@ function releaseTerminal() {
 }
 //
 /**
+ * Builds the SSH session of a configuration and a VM, warning about a direct connection
+ * to a VM without external IP, and announces the connection. Shared with vmFiles.
+ * @param {object} configuration - Configuration object, with an auth identity.
+ * @param {object} instance - Running instance from Compute.listInstances().
+ * @param {string|null} sshKeyFile - Expanded private key from resolveKeyFile(), or null.
+ * @returns {Promise<object>} The SSH session, see gcloud.buildSshArgs() and gcloud.buildSessionEnv().
+ */
+async function prepareSshSession(configuration, instance, sshKeyFile) {
+  const tunnelThroughIap = editor.tunnelsThroughIap(configuration);
+  if (!tunnelThroughIap && !instance.externalIp) {
+    ui.showWarning(`VM "${instance.name}" has no external IP: a direct connection only works from inside its network.`);
+    ui.writeInline(ui.formatGray("Turn on IAP with Manage configurations (\"ssh.tunnelThroughIap\") to connect through IAP.\n"));
+  }
+  //
+  const { account, quotaProject } = await resolveAccount(configuration.auth);
+  ui.showInfo(`Connecting to ${instance.name} as ${account} (${tunnelThroughIap ? "via IAP tunnel" : "direct"})...`);
+  return {
+    identity: configuration.auth.identity,
+    account,
+    quotaProject,
+    projectId: configuration.defaultProjectId,
+    zone: instance.zone,
+    instance: instance.name,
+    tunnelThroughIap,
+    sshKeyFile
+  };
+}
+//
+/**
  * Opens an SSH session on a running Linux VM through gcloud compute ssh.
  * @param {object} configuration - Configuration object, with an auth identity.
  * @param {object} instance - Running instance from Compute.listInstances().
@@ -206,24 +238,7 @@ async function connectSsh(configuration, instance) {
     return;
   }
   //
-  const tunnelThroughIap = editor.tunnelsThroughIap(configuration);
-  if (!tunnelThroughIap && !instance.externalIp) {
-    ui.showWarning(`VM "${instance.name}" has no external IP: a direct connection only works from inside its network.`);
-    ui.writeInline(ui.formatGray("Turn on IAP with Manage configurations (\"ssh.tunnelThroughIap\") to connect through IAP.\n"));
-  }
-  //
-  const { account, quotaProject } = await resolveAccount(configuration.auth);
-  const session = {
-    identity: configuration.auth.identity,
-    account,
-    quotaProject,
-    projectId: configuration.defaultProjectId,
-    zone: instance.zone,
-    instance: instance.name,
-    tunnelThroughIap,
-    sshKeyFile
-  };
-  ui.showInfo(`Connecting to ${instance.name} as ${account} (${tunnelThroughIap ? "via IAP tunnel" : "direct"})...`);
+  const session = await prepareSshSession(configuration, instance, sshKeyFile);
   ui.writeInline(ui.formatGray(`Equivalent command: ${gcloud.formatSshCommand(session)}\n`));
   //
   releaseTerminal();
@@ -233,7 +248,7 @@ async function connectSsh(configuration, instance) {
   } else if (signal || code === INTERRUPTED_EXIT_CODE) {
     ui.showInfo("SSH session interrupted.");
   } else {
-    showSshFailureHints(code, tunnelThroughIap);
+    showSshFailureHints(code, session.tunnelThroughIap);
   }
 }
 //
@@ -557,5 +572,13 @@ module.exports = {
   name: "vmConnect",
   description: "Connect to a VM (SSH/RDP)",
   execute,
-  connectToInstance
+  connectToInstance,
+  // Shared with vmFiles.
+  RUNNING,
+  WINDOWS,
+  showRunningVMList,
+  showSshFailureHints,
+  prepareSshSession,
+  resolveKeyFile,
+  releaseTerminal
 };

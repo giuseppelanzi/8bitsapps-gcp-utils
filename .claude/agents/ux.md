@@ -22,16 +22,18 @@ Note: the network/firewall command (`updateFirewall.js`) has no UX interaction �
 | File | Description |
 |---|---|
 | `utils/prompts/listWithEscape.js` | Custom Inquirer prompt with ESC, back arrow, and delete key support. |
-| `utils/prompts/filterableList.js` | List prompt with incremental type-to-filter and load-more pagination (ANSI escape sequences inside it are UI territory). |
+| `utils/prompts/filterableList.js` | List prompt with incremental type-to-filter and load-more pagination (ANSI escape sequences inside it are UI territory). Extension points for subclasses, whose defaults keep the behavior of every caller: `matchItems(term)` (the pure filter; it decides "(no matches)" and the window), `visibleItems(windowedMatches)` (the rows shown; "Load more" counts the matches actually shown), `toRow(item)`, `buildFooter()`. |
 | `utils/prompts/inputWithEscape.js` | Input prompt with ESC support (the screen cleanup inside `onEscape()` is UI territory). |
 | `utils/prompts/passwordWithEscape.js` | Masked input prompt with ESC support, built on `inputWithEscape`; see its contract below. |
+| `utils/prompts/filterableCheckbox.js` | Multiple choice built on `filterableList`, with a search that ignores whitespace; see its contract below. |
 
 ## Owned sections in shared files
 
 | File | Owned sections |
 |---|---|
 | `gcpUtils.js` | `showMainMenu()`, `showConfigMenu()` (it waits for a key when no configuration exists), `waitForKeypress()`. |
-| `commands/vmConnect.js` | `showRunningVMList()` (OS column, searchable), the list loop in `execute()`, and the flow of `connectToInstance()`: identity and status checks, then `connectSsh()` for a Linux VM or `connectRdp()` for a Windows one (`guestOs`). `connectToInstance()` is shared with the janitor and never throws. `resolveKeyFile()` expands `ssh.keyFile` and checks the key pair: `execute()` calls it after listing the VMs and stops there only when none of them is Windows, since a broken pair fails every Linux VM alike; `connectSsh()` calls it again. `connectRdp()` re-validates `rdp.username` (configurations can be edited by hand), stops on a direct connection without external IP, and otherwise goes through `connectRdpThroughIap()`: tunnel, relay, `.rdp` file, client, then `watchSession()` while `listenForCancelKeys()` listens for ESC, q or Ctrl+C (it resumes the stdin a prompt left paused). Everything is closed in a `finally` whose guards are declared before the `try`, and `restoreTerminal()` removes the listener explicitly. On macOS, `offerRdpPassword()` reads the saved RDP password and copies it to the clipboard only after `openRdpFile()`, so a connection that already failed never touches the keychain; any keychain or clipboard error is a warning and the session goes on. Through IAP the clipboard is cleared at `onStarted` (which resets `changeCount` first, inside a timer: `clearSecret()` never rejects) and in the `finally`, before the tunnel closes. |
+| `commands/vmConnect.js` | `showRunningVMList()` (OS column, searchable), the list loop in `execute()`, and the flow of `connectToInstance()`: identity and status checks, then `connectSsh()` for a Linux VM or `connectRdp()` for a Windows one (`guestOs`). `connectToInstance()` is shared with the janitor and never throws. `RUNNING`, `WINDOWS`, `showRunningVMList()` (its message is a parameter), `prepareSshSession()` (the SSH session, the warning about a direct connection without external IP and the "Connecting to…" line, shared by `connectSsh()`), `resolveKeyFile()` and `releaseTerminal()` are exported for `vmFiles`. `resolveKeyFile()` expands `ssh.keyFile` and checks the key pair: `execute()` calls it after listing the VMs and stops there only when none of them is Windows, since a broken pair fails every Linux VM alike; `connectSsh()` calls it again. `connectRdp()` re-validates `rdp.username` (configurations can be edited by hand), stops on a direct connection without external IP, and otherwise goes through `connectRdpThroughIap()`: tunnel, relay, `.rdp` file, client, then `watchSession()` while `listenForCancelKeys()` listens for ESC, q or Ctrl+C (it resumes the stdin a prompt left paused). Everything is closed in a `finally` whose guards are declared before the `try`, and `restoreTerminal()` removes the listener explicitly. On macOS, `offerRdpPassword()` reads the saved RDP password and copies it to the clipboard only after `openRdpFile()`, so a connection that already failed never touches the keychain; any keychain or clipboard error is a warning and the session goes on. Through IAP the clipboard is cleared at `onStarted` (which resets `changeCount` first, inside a timer: `clearSecret()` never rejects) and in the `finally`, before the tunnel closes. |
+| `commands/vmFiles.js` | The whole flow: `execute()` (running Linux VMs only, `describeKeyProblem()` once before the list: `resolveKeyFile()`, and without `ssh.keyFile` on macOS/Linux gcloud's own pair through `describeSshKeyProblem()`, since the master runs with stdin closed), `openFiles()` (`prepareSshSession()`, then `releaseTerminal()` before opening), `browseInstance()` (never throws; closes the connection in a `finally`), `navigate()` (listing kept in memory and refreshed only on a change of folder or after an upload; a folder change takes effect only once its listing succeeds; `←` is the parent folder, off at `/`; ESC closes the navigator), `downloadFile()` (gets the listing entry, whose `size` is the total of the measure, null for a link; `lstat` of the local name: a regular file asks, anything else refuses), `uploadFiles()` (regular files of the working directory, links followed, unreadable entries skipped, no prompt when none; the remote folder is listed again before the questions, and each name is checked against that fresh listing: a regular file asks, a folder, link or `others` entry refuses; the size of a file being overwritten, from that listing, is passed as `previous`; when the connection drops, the files left are counted in the log), `deleteFile()` (DEL on a file row only, `deleteFilter` accepts `action === "file"`; asks first, saying for a link that its target stays; a link is deleted itself; the entry leaves the listing in memory, no new listing), `promptLocalFiles()` (`filterableCheckbox` over the local files, with the storage window settings), `askOverwrite(name, index, total)` (a `listWithEscape` per conflicting upload: `1. Overwrite`, `2. Overwrite all`, `3. Skip`, `4. Skip all` with `(i/n conflicts)`, or only Overwrite / Skip with no counter when there is one conflict; `default: "skip"` by value; an "all" answer stands for the conflicts left; ESC cancels the whole upload, since every question comes before any copy, and the lines of the loop reach the log only when it ends), `confirmAction()` (default No, for the download and the deletion of one file). An opening failure shows the error, then the auth hint and stop, else the SSH hints only when `typeof err.stderr === "string"`. |
 | `commands/configure.js` | `askChoice()`, `askYesNo()`, `askText()` and the other `ask…()` functions, the identity defaults (`describeLoginState()`, `adcAuthDefaults()`, `authDefaults()`), the wizard (`collectAnswers()`, `runWizard()`: modes `create`, `edit`, `duplicate`), the menu loop in `execute()`, and the delete and duplicate flows. `createConfiguration()` is shared with `init.js`. |
 | `commands/init.js` | The prompt flow of `execute()`: wizard offered when no configuration exists, example written only on "No", `true` returned only when a configuration was saved. |
 
@@ -48,7 +50,7 @@ Note: the network/firewall command (`updateFirewall.js`) has no UX interaction �
 
 | Input | Return value | Meaning |
 |---|---|---|
-| ESC key | `null` | Exit completely. |
+| ESC key | `null` | Exit completely. Only the prompt is cleaned off the screen, as inputWithEscape does: the line above stays, and the cursor is shown again. |
 | Left arrow | `{ action: "back" }` | Go back one level. |
 | DEL key | `{ action: "delete", value: selectedValue }` | Delete selected item. |
 | Enter key | choice `value` | Normal selection. |
@@ -65,7 +67,7 @@ Used for long, searchable listings (storage navigation, janitor inventories). Di
 |---|---|---|
 | Printable keys (digits included) | — | Extend the filter term; the list narrows live. No jump-to-index. |
 | ESC with active filter | — | Clears the filter, prompt stays open. |
-| ESC with empty filter | `null` | Exit completely. |
+| ESC with empty filter | `null` | Exit completely. Only the prompt is cleaned, and the cursor is left at the start of its question line, where a caller may write its trail. |
 | Left arrow | `{ action: "back" }` | Only with an empty filter; ignored otherwise. |
 | DEL key | `{ action: "delete", value }` | Only when `deleteFilter` is provided and accepts the value; ignored otherwise (stricter than listWithEscape). |
 | Enter on `Load more` | — | Widens the window by `pageStep`, prompt stays open. |
@@ -83,6 +85,21 @@ Configuration options:
 ## passwordWithEscape contract
 
 As `inputWithEscape` (ESC returns `null`), with the value masked: one `*` per character while typing, `[hidden]` once answered (nothing for an empty answer), masked next to the spinner of async validators too, and never put back on the line after a validation error. No default is ever shown. The mask goes through `opt.transformer`, so inquirer's own `render()` keeps the layout; colors come from `utils/ui.js`, no chalk.
+
+## filterableCheckbox contract
+
+| Input | Return value | Meaning |
+|---|---|---|
+| Printable keys | — | Extend the search; whitespace is ignored on both sides, so "provapippo" finds "prova pippo.txt". |
+| SPACE | — | Selects or deselects the highlighted item; inert on "Load more", separators and command rows. |
+| Enter on an item | selected values, in source order | With nothing selected, the highlighted item alone. |
+| Enter on "Select all" / "Invert" | — | Acts on the matches of the current search only; the prompt stays open. |
+| Enter on `Load more` | — | Widens the window, as in filterableList. |
+| ESC with active filter | — | Clears the filter; the selection stays. |
+| ESC with empty filter | `null` | Cancels, cleaning only this prompt off the screen, as inputWithEscape does. |
+| Left arrow, DEL | — | Inert: the caller gets an array or `null`, never a back or delete action. |
+
+Rows: the matches inside the window, plus every selected item that does not match, all in source order; a filter change puts the cursor on the first match, and a selection keeps it on its row. `Load more` (the base `loadMore()`) widens the window until `pageStep` more matches are shown, so a press is never spent on selected rows already on screen, and puts the cursor on the first new match. A space within 15 ms of the previous key belongs to a paste and is dropped. The answered line shows the names, or "N files" past three. Options: `source` (`{ name, value, short, search }`, `search` lowercase, values unique), `pageWindow` / `pageStep`, and the formatters `formatMark(checked)`, `formatCommand(command, filtered)` with `command` equal to `"selectAll"` or `"invert"`, `formatAnswer(text)` (the answered line shows the `short` of the chosen items), `formatLoadMore`, `noMatchesText`. The selection is created lazily, since the base constructor rebuilds the rows before the subclass can assign fields.
 
 ## inputWithEscape contract
 

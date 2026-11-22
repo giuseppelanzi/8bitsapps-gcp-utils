@@ -41,22 +41,32 @@ class FilterableListPrompt extends ListPrompt {
   //
   /**
    * Recomputes choices from source: filter first, then window, then footer.
+   * The window and "(no matches)" count the matches only; subclasses may show more
+   * rows through visibleItems().
    */
   rebuild() {
     const term = this.filterTerm.toLowerCase();
-    const matches = term ? this.opt.source.filter((item) => item.search.includes(term)) : this.opt.source;
+    const matches = this.matchItems(term);
     const windowed = matches.slice(0, this.windowSize);
-    const rows = windowed.map((item) => ({ name: item.name, value: item.value }));
-    if (matches.length > windowed.length) {
+    const visible = this.visibleItems(windowed);
+    const rows = visible.map((item) => this.toRow(item));
+    //
+    // "Load more" counts the matches actually shown, which visibleItems() may widen.
+    const shown = new Set(visible);
+    const shownMatches = matches.filter((item) => shown.has(item)).length;
+    this.lastMatches = matches;
+    this.shownItems = shown;
+    this.shownMatchCount = shownMatches;
+    if (shownMatches < matches.length) {
       const label = this.opt.formatLoadMore
-        ? this.opt.formatLoadMore(windowed.length, matches.length)
-        : `Load more (${windowed.length}/${matches.length})`;
+        ? this.opt.formatLoadMore(shownMatches, matches.length)
+        : `Load more (${shownMatches}/${matches.length})`;
       rows.push({ name: label, value: LOAD_MORE });
     }
-    if (this.opt.source.length > 0 && windowed.length === 0) {
+    if (this.opt.source.length > 0 && matches.length === 0) {
       rows.push(new Separator(this.opt.noMatchesText ? this.opt.noMatchesText() : "(no matches)"));
     }
-    for (const row of this.opt.footer || []) {
+    for (const row of this.buildFooter()) {
       rows.push(row);
     }
     this.opt.choices = new Choices(rows, this.answers);
@@ -67,6 +77,41 @@ class FilterableListPrompt extends ListPrompt {
     if (this.opt.state) {
       this.opt.state.filterTerm = this.filterTerm;
     }
+  }
+  //
+  /**
+   * Extension point: the source items that match the filter term, in source order.
+   * @param {string} term - Filter term, lowercase.
+   * @returns {Array} The matching items.
+   */
+  matchItems(term) {
+    return term ? this.opt.source.filter((item) => item.search.includes(term)) : this.opt.source;
+  }
+  //
+  /**
+   * Extension point: the items shown, given the matches inside the window.
+   * @param {Array} windowedMatches - Matching items inside the window.
+   * @returns {Array} The items to show, in source order.
+   */
+  visibleItems(windowedMatches) {
+    return windowedMatches;
+  }
+  //
+  /**
+   * Extension point: the choice row of a source item.
+   * @param {{name: string, value: *}} item - Source item.
+   * @returns {{name: string, value: *}} The row.
+   */
+  toRow(item) {
+    return { name: item.name, value: item.value };
+  }
+  //
+  /**
+   * Extension point: the fixed rows under the list.
+   * @returns {Array} Choices or separators.
+   */
+  buildFooter() {
+    return this.opt.footer || [];
   }
   //
   /**
@@ -167,12 +212,31 @@ class FilterableListPrompt extends ListPrompt {
       return;
     }
     if (choice.value === LOAD_MORE) {
-      this.windowSize += this.pageStep;
-      this.rebuild();
-      this.render();
+      this.loadMore();
       return;
     }
     this.finalize(choice.value);
+  }
+  //
+  /**
+   * Widens the window until pageStep more matches are shown, or all of them, and puts
+   * the cursor on the first match that was hidden. Plain lists need one step, with the
+   * cursor where "Load more" was; a subclass that shows rows outside the window may need
+   * more, so a press is never wasted on rows already on screen.
+   */
+  loadMore() {
+    const before = this.shownItems;
+    const target = Math.min(this.lastMatches.length, this.shownMatchCount + this.pageStep);
+    do {
+      this.windowSize += this.pageStep;
+      this.rebuild();
+    } while (this.shownMatchCount < target);
+    const firstNew = this.lastMatches.find((item) => !before.has(item));
+    const index = firstNew ? this.opt.choices.realChoices.findIndex((choice) => choice.value === firstNew.value) : -1;
+    if (index >= 0) {
+      this.selected = index;
+    }
+    this.render();
   }
   //
   /**
@@ -184,7 +248,23 @@ class FilterableListPrompt extends ListPrompt {
       this.onFilterChanged();
       return;
     }
-    this.finalizeWithClear(null, this.screen.height);
+    this.cancel();
+  }
+  //
+  /**
+   * Resolves with null, cleaning only the prompt off the screen, as inputWithEscape and
+   * listWithEscape do: the cursor sits on the last line of the list, so moving up by the
+   * screen height would erase the line above the prompt too. The cursor is left at the
+   * start of the question line, so a caller can write its trail there. The lines under
+   * the prompt are reset, otherwise releaseCursor() would move the cursor down again.
+   */
+  cancel() {
+    this.rl.output.unmute();
+    this.screen.clean(this.screen.extraLinesUnderPrompt);
+    this.screen.extraLinesUnderPrompt = 0;
+    this.rl.setPrompt("");
+    this.teardown();
+    this.done(null);
   }
   //
   /**
@@ -224,12 +304,13 @@ class FilterableListPrompt extends ListPrompt {
   }
   //
   /**
-   * Resolves by wiping the prompt area (ESC, back and delete paths), with
-   * the same escape sequences listWithEscape uses so callers' line rewrites
-   * keep working unchanged.
+   * Resolves by wiping the prompt area (back and delete paths), with the same
+   * escape sequences listWithEscape uses, so callers can rewrite the question
+   * line above the cursor. The cursor moves to column 0 before clearing, so no
+   * part of the question line survives.
    */
   finalizeWithClear(value, linesUp) {
-    process.stdout.write(`\x1b[${linesUp}A\x1b[J\x1b[G`);
+    process.stdout.write(`\x1b[${linesUp}A\x1b[G\x1b[J`);
     this.screen.done();
     this.teardown();
     this.done(value);

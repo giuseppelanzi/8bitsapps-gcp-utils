@@ -217,9 +217,9 @@ const command = {
       //
       if (result === null) {
         // ESC pressed - exit storage navigator completely.
+        // The prompt leaves the cursor on its cleaned question line: the trail goes there.
         const exitDisplayPath = currentPath || "/";
-        ui.overwriteLineAbove(`? ${bucketName}:${exitDisplayPath} ${navigationHint(backEnabled)} ${ui.formatExitLabel()}`);
-        console.log();
+        ui.writeInline(`? ${bucketName}:${exitDisplayPath} ${navigationHint(backEnabled)} ${ui.formatExitLabel()}\n`);
         return;
       }
       //

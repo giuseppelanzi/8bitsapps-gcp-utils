@@ -40,7 +40,7 @@ Net diff: !`git diff HEAD~1`
 
 - No credentials or secrets in committed code.
 - No `eval()`, `Function()`, or dynamic require with user input.
-- No destructive filesystem operations outside `Configurations/` and `Credentials/`. One recorded exception: `utils/rdp.js` removes and recreates its own `.rdp` files, and narrows the mode of its folder, only inside the per-user private folder of `getRdpDir()`, on cleaned file names (see `backend.md`).
+- No destructive filesystem operations outside `Configurations/` and `Credentials/`. Two recorded exceptions: `utils/rdp.js` removes and recreates its own `.rdp` files, and narrows the mode of its folder, only inside the per-user private folder of `getRdpDir()`, on cleaned file names; `utils/remoteFiles.js` removes the folder of a control socket that it created itself with `fs.mkdtemp()` (see `backend.md`).
 
 ## Output
 

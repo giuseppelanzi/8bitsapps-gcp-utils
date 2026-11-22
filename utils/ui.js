@@ -56,34 +56,79 @@ function showCursor() {
 // --- Progress indicators. ---
 //
 /**
- * Shows a progress indicator with leading newline.
+ * Shows a progress indicator, without a newline.
  * @param {string} message - Progress message (without trailing dots).
+ * @param {string} [detail] - Text after the dots, such as the measure of a transfer.
  */
-function showProgress(message) {
-  process.stdout.write(chalk.yellow(`\u23f3 ${message}...`));
+function showProgress(message, detail) {
+  process.stdout.write(formatProgress(message, detail));
 }
 //
 /**
  * Returns a formatted progress string (no newline, no I/O).
  * @param {string} message - Progress message (without trailing dots).
+ * @param {string} [detail] - Text after the dots, such as the measure of a transfer.
  * @returns {string} Chalk-formatted progress string.
  */
-function formatProgress(message) {
-  return chalk.yellow(`\u23f3 ${message}...`);
+function formatProgress(message, detail) {
+  return chalk.yellow(`\u23f3 ${message}...${detail ? ` ${detail}` : ""}`);
 }
 //
 // --- Formatting helpers. ---
 //
 /**
- * Formats file size in human readable format.
+ * Formats file size in human readable format. Below 1 byte, as a slow speed can be,
+ * the size is "0 B": the logarithm would otherwise pick a unit that does not exist.
  * @param {number} bytes - Size in bytes.
  * @returns {string} Formatted size.
  */
 function formatSize(bytes) {
-  if (bytes === 0) return "0 B";
+  if (!(bytes >= 1)) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+//
+/**
+ * Formats a duration as m:ss, or h:mm:ss from one hour on.
+ * @param {number} ms - Duration in milliseconds.
+ * @returns {string} Formatted duration.
+ */
+function formatDuration(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = String(total % 60).padStart(2, "0");
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
+}
+//
+/**
+ * Formats the measure of a transfer, for the text after the dots of its progress line.
+ * Without a reliable reading: the total size and the time elapsed, or the time alone.
+ * With one: the percentage, or the bytes when the total is unknown, then the speed once
+ * known, then the time left, only when it can be estimated and the copy is not complete.
+ * @param {{bytes: number|null, total: number|null, rate: number|null, elapsedMs: number}} sample - Measure, see remoteFiles.watchTransfer().
+ * @returns {string} The measure.
+ */
+function formatTransferStats(sample) {
+  if (sample.bytes === null) {
+    const elapsed = formatDuration(sample.elapsedMs);
+    return sample.total === null ? elapsed : `${formatSize(sample.total)} · ${elapsed}`;
+  }
+  const parts = [];
+  if (sample.total === null) {
+    parts.push(formatSize(sample.bytes));
+  } else {
+    const percent = sample.total > 0 ? Math.floor(Math.min(sample.bytes, sample.total) / sample.total * 100) : 100;
+    parts.push(`${percent}%`);
+  }
+  if (sample.rate !== null) {
+    parts.push(`${formatSize(sample.rate)}/s`);
+    if (sample.total !== null && sample.rate >= 1 && sample.bytes < sample.total) {
+      parts.push(`${formatDuration(Math.ceil((sample.total - sample.bytes) / sample.rate) * 1000)} left`);
+    }
+  }
+  return parts.join(" · ");
 }
 //
 /**
@@ -121,6 +166,15 @@ function formatRed(text) {
  */
 function formatYellow(text) {
   return chalk.yellow(text);
+}
+//
+/**
+ * Formats text in cyan, as inquirer shows an answer.
+ * @param {string} text - Text to format.
+ * @returns {string} Chalk-formatted cyan text.
+ */
+function formatCyan(text) {
+  return chalk.cyan(text);
 }
 //
 /**
@@ -212,6 +266,36 @@ function formatUploadChoice() {
 }
 //
 /**
+ * Formats the "Upload files here" menu choice, for uploads of several files at once.
+ * @returns {string} Chalk-formatted string.
+ */
+function formatUploadFilesChoice() {
+  return chalk.green("↑ Upload files here");
+}
+//
+/**
+ * Formats the selection mark of a row in a multiple choice.
+ * @param {boolean} checked - Whether the row is selected.
+ * @returns {string} A green filled circle, or an empty one.
+ */
+function formatCheckMark(checked) {
+  return checked ? chalk.green("◉") : "◯";
+}
+//
+/**
+ * Formats a command row of a multiple choice.
+ * @param {string} command - "selectAll" or "invert".
+ * @param {boolean} filtered - Whether a filter is active, so the command acts on its matches only.
+ * @returns {string} Chalk-formatted string.
+ */
+function formatSelectionCommand(command, filtered) {
+  if (command === "selectAll") {
+    return chalk.green(filtered ? "✓ Select all matching" : "✓ Select all");
+  }
+  return chalk.green(filtered ? "⇄ Invert matching" : "⇄ Invert selection");
+}
+//
+/**
  * Formats the "Create folder here" menu choice.
  * @returns {string} Chalk-formatted string.
  */
@@ -259,12 +343,12 @@ function formatNoMatches() {
 }
 //
 /**
- * Measures the visible width of a string, skipping ANSI color sequences.
+ * Returns the characters of a string that reach the screen, skipping ANSI color sequences.
  * @param {string} text - Text possibly containing chalk colors.
- * @returns {number} Visible character count.
+ * @returns {string[]} The visible characters, one code point each.
  */
-function visibleLength(text) {
-  let length = 0;
+function visibleChars(text) {
+  const chars = [];
   let inEscape = false;
   for (const ch of text) {
     if (inEscape) {
@@ -272,10 +356,19 @@ function visibleLength(text) {
     } else if (ch === "\x1b") {
       inEscape = true;
     } else {
-      length++;
+      chars.push(ch);
     }
   }
-  return length;
+  return chars;
+}
+//
+/**
+ * Measures the visible width of a string, skipping ANSI color sequences.
+ * @param {string} text - Text possibly containing chalk colors.
+ * @returns {number} Visible character count.
+ */
+function visibleLength(text) {
+  return visibleChars(text).length;
 }
 //
 /**
@@ -292,6 +385,97 @@ function formatColumns(cells, widths) {
     return padding > 0 ? text + " ".repeat(padding) : text;
   });
   return padded.join("  ").trimEnd();
+}
+//
+// --- Terminal width. ---
+//
+// Width assumed when the terminal does not tell its own.
+const DEFAULT_TERMINAL_WIDTH = 80;
+//
+// Mark of a shortened text, and its width as displayWidth() counts it.
+const ELLIPSIS = "…";
+const ELLIPSIS_WIDTH = 2;
+//
+// Last code point counted as one column: printable ASCII.
+const LAST_NARROW_CODE_POINT = 0x7e;
+//
+/**
+ * Returns the width of the terminal.
+ * @returns {number} Columns, DEFAULT_TERMINAL_WIDTH when unknown.
+ */
+function terminalWidth() {
+  return process.stdout.columns || DEFAULT_TERMINAL_WIDTH;
+}
+//
+/**
+ * Measures the columns a text may take, skipping ANSI color sequences. The count errs
+ * on the wide side: every character past ASCII counts two columns, emoji and CJK
+ * included, so a line measured with it never wraps.
+ * @param {string} text - Text possibly containing chalk colors.
+ * @returns {number} Columns, at most.
+ */
+function displayWidth(text) {
+  return visibleChars(text).reduce((width, ch) => width + (ch.codePointAt(0) > LAST_NARROW_CODE_POINT ? 2 : 1), 0);
+}
+//
+/**
+ * Shortens a plain text in the middle with "…", so both ends, an extension among them,
+ * stay visible. Characters are taken from the two ends in turn, each only if it fits;
+ * the result never exceeds the width, as displayWidth() counts it.
+ * @param {string} text - Plain text, without colors.
+ * @param {number} width - Columns available.
+ * @returns {string} The text, whole if it fits; "…" alone if no character fits beside it; empty below the width of "…".
+ */
+function truncateMiddle(text, width) {
+  if (displayWidth(text) <= width) {
+    return text;
+  }
+  if (width < ELLIPSIS_WIDTH) {
+    return "";
+  }
+  const chars = Array.from(text);
+  const budget = width - ELLIPSIS_WIDTH;
+  let head = 0;
+  let tail = 0;
+  let used = 0;
+  let headFull = false;
+  let tailFull = false;
+  let fromHead = true;
+  while (!(headFull && tailFull) && head + tail < chars.length) {
+    const takeHead = tailFull || (fromHead && !headFull);
+    const ch = takeHead ? chars[head] : chars[chars.length - 1 - tail];
+    const charWidth = displayWidth(ch);
+    if (used + charWidth > budget) {
+      headFull = headFull || takeHead;
+      tailFull = tailFull || !takeHead;
+    } else {
+      used += charWidth;
+      head += takeHead ? 1 : 0;
+      tail += takeHead ? 0 : 1;
+    }
+    fromHead = !fromHead;
+  }
+  return `${chars.slice(0, head).join("")}${ELLIPSIS}${chars.slice(chars.length - tail).join("")}`;
+}
+//
+/**
+ * Cuts a plain text at the end, so it never exceeds the width, as displayWidth() counts it.
+ * @param {string} text - Plain text, without colors.
+ * @param {number} width - Columns available.
+ * @returns {string} The beginning of the text that fits.
+ */
+function truncateEnd(text, width) {
+  let used = 0;
+  let result = "";
+  for (const ch of text) {
+    const charWidth = displayWidth(ch);
+    if (used + charWidth > width) {
+      break;
+    }
+    used += charWidth;
+    result += ch;
+  }
+  return result;
 }
 //
 // --- Navigation labels. ---
@@ -369,10 +553,13 @@ module.exports = {
   formatProgress,
   // Formatting.
   formatSize,
+  formatDuration,
+  formatTransferStats,
   getDisplayName,
   formatGreen,
   formatRed,
   formatYellow,
+  formatCyan,
   formatGray,
   formatDate,
   formatDaysAgo,
@@ -383,12 +570,20 @@ module.exports = {
   showOperationLog,
   // Menu choices.
   formatUploadChoice,
+  formatUploadFilesChoice,
+  formatCheckMark,
+  formatSelectionCommand,
   formatCreateFolderChoice,
   formatNewChoice,
   formatChange,
   formatLoadMore,
   formatNoMatches,
   formatColumns,
+  // Terminal width.
+  terminalWidth,
+  displayWidth,
+  truncateMiddle,
+  truncateEnd,
   // Navigation labels.
   formatExitLabel,
   formatBackLabel,
