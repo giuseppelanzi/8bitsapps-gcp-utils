@@ -1,6 +1,6 @@
 # GCP Utils
 
-Interactive CLI tool for managing Google Cloud Platform (GCP) services, including firewall and storage operations, a Compute Engine inventory, and SSH and RDP access to VMs.
+Interactive CLI tool for managing Google Cloud Platform (GCP) services, including firewall and storage operations, a Compute Engine inventory, SSH and RDP access to VMs, and file transfer to and from them.
 
 ## Features
 
@@ -15,6 +15,20 @@ Connects to a running Compute Engine VM as the identity of the selected configur
 - RDP opens a `.rdp` file with the app the system associates with it: Windows App on macOS, `mstsc` on Windows, the `xdg-open` handler on Linux. Set `rdp.username` to pre-fill the Windows user. On macOS the wizard can also keep the Windows password in the keychain: it is copied to the clipboard when the client opens, ready for ⌘V at the login.
 - Set `rdp.tunnelThroughIap` to reach Windows VMs through an IAP tunnel, which needs no external IP. The tool opens the tunnel, waits for the RDP session, and closes the tunnel once the RDP window is closed; `ESC` closes it earlier. Without IAP, the client connects to the external IP directly.
 - The equivalent `gcloud` command is printed before connecting, so the session can be reproduced by hand.
+
+### Browse and transfer VM files
+
+Navigator for the file system of a running Linux VM, as the identity of the selected configuration, with the same `ssh.tunnelThroughIap` and `ssh.keyFile` as SSH. Windows VMs are left out: they are reached over RDP.
+
+- Browse folders from the home of the remote user: folders and files as in the storage navigator, with incremental filter and `Load more`. The left arrow goes to the parent folder, so the whole file system can be reached; links to folders open, links to files can be downloaded.
+- Select a file to download it into the local folder the tool was started from.
+- **Upload files here** picks one or more files of that local folder and copies them into the current remote folder. Type to search, spaces ignored ("provapippo" finds "prova pippo.txt"); `SPACE` selects the highlighted file, and the selection stays through later searches, selected files remaining in the list; **Select all** and **Invert selection** act on the files matching the search; ENTER uploads the selected files, or the highlighted one when none is selected; `ESC` clears the search first, then cancels. The left arrow does nothing in this list.
+- `DEL` deletes the selected file on the VM, after a confirmation: one file at a time, never a folder. On a link, it deletes the link, not the file it points to.
+- A file that already exists on the other side is overwritten only after a confirmation. During an upload the folder on the VM is listed again first, then each such file offers **Overwrite**, **Overwrite all**, **Skip** and **Skip all** (Skip is preselected; with a single conflict only Overwrite and Skip), and `ESC` cancels the whole upload before anything is copied; a download asks yes or no. Anything else with the same name — a folder, a link, a special file — stops the copy of that file, so a copy never writes through a link.
+- While a file is copied, its progress line shows the percentage, the speed and the time left, updated every second. On Windows an upload shows only the size of the file and the time elapsed, since every reading of the VM would take a gcloud command of some seconds.
+- Files only, no folders. A file the SSH user cannot read or write shows its error; nothing runs with sudo.
+- After each copy, the equivalent `gcloud compute scp` command is printed; after a deletion, the equivalent `gcloud compute ssh --command="rm -- '…'"`.
+- On macOS and Linux one SSH connection is opened at the start and shared by every listing, deletion and copy, which then take a fraction of a second even through IAP; it is closed when you leave the VM. On Windows every operation runs `gcloud` on its own and takes a few seconds.
 
 ### Browse and manage GCS storage
 
@@ -70,7 +84,8 @@ Sets up the configuration directory with the required structure. When no configu
 ## Requirements
 
 - **Node.js**: >= 18.0.0 (Node.js 22 LTS recommended)
-- **Google Cloud SDK**: `gcloud` in `PATH`, used for the login flow, SSH and the IAP tunnel for RDP.
+- **Google Cloud SDK**: `gcloud` in `PATH`, used for the login flow, SSH, file transfer and the IAP tunnel for RDP.
+- **OpenSSH client** (for VM files on macOS and Linux): `ssh` and `sftp`, which both systems ship, and `pkill`/`pgrep` (procps on Linux), which end the shared connection. On the VM, GNU `find`, `base64` and the SFTP subsystem of sshd, which the Linux images of Compute Engine all have.
 - **RDP client** (for Windows VMs only): an app that opens `.rdp` files. On macOS, Windows App (formerly Microsoft Remote Desktop) from the Mac App Store; Windows has `mstsc` built in; on Linux, a client such as Remmina. Linux is best effort: without a desktop environment, `xdg-open` may wait for the client to close, and the IAP tunnel then stays open until `ESC` or the three-minute timeout.
 
 ## Installation
@@ -198,7 +213,7 @@ Required roles:
 - **Firewall**: `Compute Security Admin` or `Compute Network Admin`
 - **Storage**: `Storage Object Admin`
 - **Compute Engine (janitor)**: `Compute Viewer`
-- **SSH**: `Compute Viewer`, plus `Compute OS Login` (`roles/compute.osLogin`) on VMs with OS Login, or the permission to set instance or project metadata on VMs without it. Through IAP, also `IAP-secured Tunnel User` (`roles/iap.tunnelResourceAccessor`) and a firewall rule allowing `tcp:22` from `35.235.240.0/20`.
+- **SSH and VM files**: `Compute Viewer`, plus `Compute OS Login` (`roles/compute.osLogin`) on VMs with OS Login, or the permission to set instance or project metadata on VMs without it. Through IAP, also `IAP-secured Tunnel User` (`roles/iap.tunnelResourceAccessor`) and a firewall rule allowing `tcp:22` from `35.235.240.0/20`.
 - **RDP**: `Compute Viewer`. Through IAP, also `IAP-secured Tunnel User` (`roles/iap.tunnelResourceAccessor`) and a firewall rule allowing `tcp:3389` from `35.235.240.0/20`; directly, port 3389 must be reachable from your IP.
 
 #### SSH and RDP sessions
@@ -206,6 +221,8 @@ Required roles:
 The identity directory holds only the ADC file, not credentials of gcloud's own. The tool hands that file to `gcloud compute ssh` and `gcloud compute start-iap-tunnel` through gcloud's `auth/credential_file_override` property, and sets `core/account` to the account it carries — the service account, when the identity impersonates one — so no second login is needed and `~/.config/gcloud` is never touched. That property is undocumented, so a future gcloud release may change how it works.
 
 `gcloud compute ssh` uses the key pair in `~/.ssh/google_compute_engine`, shared by every identity, unless `ssh.keyFile` names another one. With OS Login the public key is registered on the profile of the account that connects; without it, gcloud adds the key to the instance or project metadata.
+
+VM files go through one master connection of OpenSSH (`ControlMaster`), opened with `gcloud compute ssh` and the same identity, so gcloud's login and the IAP tunnel are paid once. Listings (`find`), deletions (`rm`) and copies (`sftp`) then go through its control socket, which lives in a private folder created under the system temporary directory and removed when the navigator closes, or when the tool exits, even on Ctrl+C. Windows has no `ControlMaster`, and gcloud uses PuTTY there, so every operation runs `gcloud compute ssh --command` (listings and deletions) or `gcloud compute scp` (copies) on its own. There, file names containing `"`, `%`, `!` or `^` cannot be copied: they would not survive `gcloud.cmd`. A file name with a line break, or one that is not valid UTF-8, can be seen but not copied, on any system, and a name that is not valid UTF-8 cannot be deleted either; on Windows, neither can a name Windows does not accept, such as one with `\` or `:`. The system temporary directory must be short, and free of spaces and `%`, since the path of the control socket is limited and ssh would split or expand it: set `TMPDIR` otherwise.
 
 Through IAP, an RDP session runs over `gcloud compute start-iap-tunnel` on a free local port. The RDP client connects to a small relay of the tool in front of that port, which is how the tool knows when the session opens and closes: once the RDP window has been closed for about ten seconds, the tunnel is closed too. If no session starts within three minutes, the tunnel is closed as well. The `.rdp` files are kept, one per VM, in a private per-user folder under the system temporary directory, and hold only the address and the user name.
 
@@ -235,7 +252,7 @@ Configurations with `credentialsFile` keep working and print a deprecation warni
 gcpUtils
 ```
 
-Navigate menus with arrow keys. Press `ESC` to go back or exit. In filterable lists (storage browser, janitor, VM connection), type to narrow the list as you go: `ESC` first clears an active filter, then exits; the left arrow goes back one level when the filter is empty.
+Navigate menus with arrow keys. Press `ESC` to go back or exit. In filterable lists (storage browser, VM files, janitor, VM connection), type to narrow the list as you go: `ESC` first clears an active filter, then exits; the left arrow goes back one level when the filter is empty.
 
 ## License
 
