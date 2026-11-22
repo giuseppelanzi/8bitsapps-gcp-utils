@@ -1,16 +1,19 @@
 # GCP Utils
 
-Interactive CLI tool for managing Google Cloud Platform (GCP) services, including firewall and storage operations, a Compute Engine inventory, and SSH access to VMs.
+Interactive CLI tool for managing Google Cloud Platform (GCP) services, including firewall and storage operations, a Compute Engine inventory, and SSH and RDP access to VMs.
 
 ## Features
 
-### Connect to a VM over SSH
+### Connect to a VM over SSH or RDP
 
-Opens a shell on a running Compute Engine VM through `gcloud compute ssh`, as the identity of the selected configuration, so that access is governed by the Google account instead of personal keys copied onto every machine.
+Connects to a running Compute Engine VM as the identity of the selected configuration: a Linux VM gets a shell through `gcloud compute ssh`, a Windows VM opens in the system's RDP client. Access is governed by the Google account instead of personal keys copied onto every machine.
 
-- Pick a running VM from a filterable list, or choose **Connect via SSH** from the VM detail card of the janitor.
-- Set `ssh.tunnelThroughIap` to reach VMs through Identity-Aware Proxy, including those without an external IP.
+- Pick a running VM from a filterable list, which shows whether it runs Windows or Linux, or choose **Connect via SSH** / **Connect via RDP** from the VM detail card of the janitor.
+- A VM counts as Windows when its boot disk carries a Windows license, or the `WINDOWS` guest OS feature, as gcloud itself decides; every other VM is reached over SSH.
+- Set `ssh.tunnelThroughIap` to reach VMs over SSH through Identity-Aware Proxy, including those without an external IP.
 - Set `ssh.keyFile` to use an SSH key you already have instead of gcloud's `~/.ssh/google_compute_engine`.
+- RDP opens a `.rdp` file with the app the system associates with it: Windows App on macOS, `mstsc` on Windows, the `xdg-open` handler on Linux. Set `rdp.username` to pre-fill the Windows user. On macOS the wizard can also keep the Windows password in the keychain: it is copied to the clipboard when the client opens, ready for ⌘V at the login.
+- Set `rdp.tunnelThroughIap` to reach Windows VMs through an IAP tunnel, which needs no external IP. The tool opens the tunnel, waits for the RDP session, and closes the tunnel once the RDP window is closed; `ESC` closes it earlier. Without IAP, the client connects to the external IP directly.
 - The equivalent `gcloud` command is printed before connecting, so the session can be reproduced by hand.
 
 ### Browse and manage GCS storage
@@ -32,7 +35,7 @@ Interactive navigator for Google Cloud Storage:
 Read-only inventory of the Compute Engine resources of a project, with a report of the "zombie" items that keep costing money without being used. Nothing is ever deleted or modified on GCP.
 
 - **Resource Inventory**: filterable lists of VM instances, persistent disks, snapshots and static IP addresses.
-- VM detail card with machine type, status, attached disks and static IPs; select a disk to see its snapshots, or choose **Connect via SSH**.
+- VM detail card with machine type, operating system, status, attached disks and static IPs; select a disk to see its snapshots, or choose **Connect via SSH** or **Connect via RDP**.
 - Export the VM list, as currently filtered, to a timestamped CSV file in the current directory.
 - **Zombie Items & Cleanup**: reports unattached disks, VMs stopped for longer than `janitor.stoppedVmThresholdDays`, snapshots whose source disk no longer exists, and reserved static IPs that nothing uses.
 - Mark a zombie as an exception, with an optional reason, to hide it from later reports. Exceptions are saved per configuration in `janitor-exceptions-<config>.json`, next to the configuration files.
@@ -67,7 +70,8 @@ Sets up the configuration directory with the required structure. When no configu
 ## Requirements
 
 - **Node.js**: >= 18.0.0 (Node.js 22 LTS recommended)
-- **Google Cloud SDK**: `gcloud` in `PATH`, used for the login flow and for SSH.
+- **Google Cloud SDK**: `gcloud` in `PATH`, used for the login flow, SSH and the IAP tunnel for RDP.
+- **RDP client** (for Windows VMs only): an app that opens `.rdp` files. On macOS, Windows App (formerly Microsoft Remote Desktop) from the Mac App Store; Windows has `mstsc` built in; on Linux, a client such as Remmina. Linux is best effort: without a desktop environment, `xdg-open` may wait for the client to close, and the IAP tunnel then stays open until `ESC` or the three-minute timeout.
 
 ## Installation
 
@@ -135,7 +139,8 @@ Configurations are best created and edited with **Manage configurations**. They 
     { "name": "my-bucket-dev", "displayName": "Development" }
   ],
   "defaultBucket": "my-bucket-dev",
-  "ssh": { "tunnelThroughIap": false, "keyFile": "~/.ssh/id_ed25519" }
+  "ssh": { "tunnelThroughIap": false, "keyFile": "~/.ssh/id_ed25519" },
+  "rdp": { "tunnelThroughIap": true, "username": "beppe" }
 }
 ```
 
@@ -153,6 +158,9 @@ Configurations are best created and edited with **Manage configurations**. They 
 | `defaultBucket` | Default bucket for storage operations. |
 | `ssh.tunnelThroughIap` | Connect over SSH through Identity-Aware Proxy (optional, default `false`). Needed for VMs without an external IP. |
 | `ssh.keyFile` | Private SSH key for `gcloud compute ssh` (optional). An absolute path, or one starting with `~/`; the public key must sit next to it as `<file>.pub`, in OpenSSH format. When absent, gcloud uses `~/.ssh/google_compute_engine`. Without OS Login, gcloud adds the public key to the instance or project SSH metadata on first use. The tool tells gcloud never to regenerate this key pair: a broken pair stops the connection instead. |
+| `rdp.tunnelThroughIap` | Connect to Windows VMs over RDP through an Identity-Aware Proxy tunnel (optional, default `false`). Needed for VMs without an external IP. |
+| `rdp.username` | Windows user written into the `.rdp` file (optional), so the RDP client asks only for the password. Control characters, such as line breaks, are rejected. |
+| *(RDP password)* | Never in this file. On macOS, **Manage configurations** keeps it in the login keychain; see *RDP password* below. |
 
 ### Settings file
 
@@ -191,12 +199,25 @@ Required roles:
 - **Storage**: `Storage Object Admin`
 - **Compute Engine (janitor)**: `Compute Viewer`
 - **SSH**: `Compute Viewer`, plus `Compute OS Login` (`roles/compute.osLogin`) on VMs with OS Login, or the permission to set instance or project metadata on VMs without it. Through IAP, also `IAP-secured Tunnel User` (`roles/iap.tunnelResourceAccessor`) and a firewall rule allowing `tcp:22` from `35.235.240.0/20`.
+- **RDP**: `Compute Viewer`. Through IAP, also `IAP-secured Tunnel User` (`roles/iap.tunnelResourceAccessor`) and a firewall rule allowing `tcp:3389` from `35.235.240.0/20`; directly, port 3389 must be reachable from your IP.
 
-#### SSH sessions
+#### SSH and RDP sessions
 
-The identity directory holds only the ADC file, not credentials of gcloud's own. The tool hands that file to `gcloud compute ssh` through gcloud's `auth/credential_file_override` property, and sets `core/account` to the account it carries — the service account, when the identity impersonates one — so no second login is needed and `~/.config/gcloud` is never touched. That property is undocumented, so a future gcloud release may change how it works.
+The identity directory holds only the ADC file, not credentials of gcloud's own. The tool hands that file to `gcloud compute ssh` and `gcloud compute start-iap-tunnel` through gcloud's `auth/credential_file_override` property, and sets `core/account` to the account it carries — the service account, when the identity impersonates one — so no second login is needed and `~/.config/gcloud` is never touched. That property is undocumented, so a future gcloud release may change how it works.
 
 `gcloud compute ssh` uses the key pair in `~/.ssh/google_compute_engine`, shared by every identity, unless `ssh.keyFile` names another one. With OS Login the public key is registered on the profile of the account that connects; without it, gcloud adds the key to the instance or project metadata.
+
+Through IAP, an RDP session runs over `gcloud compute start-iap-tunnel` on a free local port. The RDP client connects to a small relay of the tool in front of that port, which is how the tool knows when the session opens and closes: once the RDP window has been closed for about ten seconds, the tunnel is closed too. If no session starts within three minutes, the tunnel is closed as well. The `.rdp` files are kept, one per VM, in a private per-user folder under the system temporary directory, and hold only the address and the user name.
+
+#### RDP password (macOS)
+
+Windows App on macOS takes no password from a `.rdp` file, so the tool cannot hand it over directly. Instead, the wizard of **Manage configurations** asks for it, masked, and keeps it in the login keychain: a generic password with service `8bitsapps-gcp-utils-rdp`, whose account is the path of the configuration file. The item holds the base64 of the password, so Keychain Access shows it encoded. The password never appears in the configuration file nor among the arguments of a process.
+
+- ENTER keeps the saved password, `-` removes it, and anything else replaces it, spaces included. **Duplicate** copies it with ENTER; **Delete** removes it with the configuration.
+- When the RDP client opens, the password is copied to the clipboard, marked as concealed (`org.nspasteboard.ConcealedType`, which clipboard history managers skip), and the tool says so: paste it with ⌘V at the login. The clipboard is cleared once the session has started, or after 45 seconds, and only if it still holds the password.
+- Limits: macOS only; Universal Clipboard, which shares the clipboard with your other Apple devices, is not prevented. On Windows and Linux the wizard does not ask for a password.
+
+To create the Windows user or reset its password, run `gcloud compute reset-windows-password <vm> --zone=<zone> --user=<user>`, which prints the new password. The IAP tunnel is faster with numpy installed in gcloud's Python and `CLOUDSDK_PYTHON_SITEPACKAGES=1` exported; the tool passes that variable on to gcloud.
 
 #### Service account impersonation (recommended)
 
@@ -214,7 +235,7 @@ Configurations with `credentialsFile` keep working and print a deprecation warni
 gcpUtils
 ```
 
-Navigate menus with arrow keys. Press `ESC` to go back or exit. In filterable lists (storage browser, janitor, SSH), type to narrow the list as you go: `ESC` first clears an active filter, then exits; the left arrow goes back one level when the filter is empty.
+Navigate menus with arrow keys. Press `ESC` to go back or exit. In filterable lists (storage browser, janitor, VM connection), type to narrow the list as you go: `ESC` first clears an active filter, then exits; the left arrow goes back one level when the filter is empty.
 
 ## License
 

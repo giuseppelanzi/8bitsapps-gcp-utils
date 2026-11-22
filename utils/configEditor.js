@@ -13,10 +13,14 @@ const FIREWALL_RULE_PATTERN = /^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$/;
 const BUCKET_PATTERN = /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/;
 const PREFIX_PATTERN = /^(0|[1-9]\d*)$/;
 //
+// Any control character, C0, C1 or DEL: in an RDP user name, a line break would add lines to the .rdp file.
+const CONTROL_CHAR_PATTERN = /\p{Cc}/u;
+//
 // Order of the keys in a written configuration. Keys not listed here follow, in their original order.
-const TOP_LEVEL_ORDER = ["auth", "defaultProjectId", "defaultFirewallRule", "defaultFixedIPAddresses", "buckets", "defaultBucket", "ssh"];
+const TOP_LEVEL_ORDER = ["auth", "defaultProjectId", "defaultFirewallRule", "defaultFixedIPAddresses", "buckets", "defaultBucket", "ssh", "rdp"];
 const AUTH_ORDER = ["identity", "account", "impersonateServiceAccount", "quotaProject"];
 const SSH_ORDER = ["tunnelThroughIap", "keyFile"];
+const RDP_ORDER = ["tunnelThroughIap", "username"];
 //
 // A pair of matching quotes around a whole answer, as left by pasting a quoted path.
 const QUOTED_PATTERN = /^(["'])(.*)\1$/s;
@@ -230,6 +234,16 @@ function validateKeyFile(value) {
   return path.isAbsolute(paths.expandHome(value)) || "Enter an absolute path, or one starting with ~/, or \"-\" to clear.";
 }
 //
+/**
+ * Validates an optional Windows user name for RDP. Called by the wizard and again
+ * before every RDP connection, since a configuration can be edited by hand.
+ * @param {string} value - Answer, already normalized.
+ * @returns {true|string} True, or the message to show.
+ */
+function validateRdpUsername(value) {
+  return !CONTROL_CHAR_PATTERN.test(asText(value)) || "The RDP user name cannot contain control characters, such as line breaks; enter a name, or \"-\" to clear.";
+}
+//
 // --- Reading a configuration. ---
 //
 /**
@@ -291,6 +305,24 @@ function tunnelsThroughIap(configuration) {
  */
 function sshKeyFile(configuration) {
   return asText((configuration.ssh || {}).keyFile);
+}
+//
+/**
+ * Tells whether a configuration reaches its Windows VMs over RDP through IAP.
+ * @param {object} configuration - Configuration object.
+ * @returns {boolean} The effective rdp.tunnelThroughIap value.
+ */
+function rdpTunnelsThroughIap(configuration) {
+  return Boolean(configuration.rdp && configuration.rdp.tunnelThroughIap);
+}
+//
+/**
+ * Returns the Windows user name a configuration writes into the .rdp file.
+ * @param {object} configuration - Configuration object.
+ * @returns {string} The rdp.username value, or an empty string to let the client ask.
+ */
+function rdpUsername(configuration) {
+  return asText((configuration.rdp || {}).username);
 }
 //
 // --- Building a configuration. ---
@@ -363,7 +395,7 @@ function orderKeys(source, order) {
  * an absent key stays absent, [] stays [], "" stays "". Keys the wizard does not
  * manage are kept as they are.
  * @param {object} original - Configuration being edited or duplicated, {} for a new one.
- * @param {{defaultProjectId: string, identity: string, account: string, impersonateServiceAccount: string, quotaProject?: string, buckets: string[], defaultFirewallRule: string, fixedIPAddresses: string[], tunnelThroughIap: boolean, keyFile: string, removeCredentialsFile?: boolean}} answers - Wizard answers; quotaProject is undefined when not asked.
+ * @param {{defaultProjectId: string, identity: string, account: string, impersonateServiceAccount: string, quotaProject?: string, buckets: string[], defaultFirewallRule: string, fixedIPAddresses: string[], tunnelThroughIap: boolean, keyFile: string, rdpTunnelThroughIap: boolean, rdpUsername: string, removeCredentialsFile?: boolean}} answers - Wizard answers; quotaProject is undefined when not asked.
  * @returns {object} The configuration to save.
  */
 function buildConfiguration(original, answers) {
@@ -406,6 +438,25 @@ function buildConfiguration(original, answers) {
   }
   if (result.ssh && typeof result.ssh === "object") {
     result.ssh = orderKeys(result.ssh, SSH_ORDER);
+  }
+  //
+  // The rdp block follows the same rules as ssh: an explicit false is kept, a block left empty goes away.
+  if (rdpTunnelsThroughIap(result) !== answers.rdpTunnelThroughIap) {
+    const rdp = result.rdp && typeof result.rdp === "object" ? result.rdp : {};
+    rdp.tunnelThroughIap = answers.rdpTunnelThroughIap;
+    result.rdp = rdp;
+  }
+  if (rdpUsername(result) !== answers.rdpUsername) {
+    const rdp = result.rdp && typeof result.rdp === "object" ? result.rdp : {};
+    applyText(rdp, "username", answers.rdpUsername);
+    if (Object.keys(rdp).length > 0) {
+      result.rdp = rdp;
+    } else {
+      delete result.rdp;
+    }
+  }
+  if (result.rdp && typeof result.rdp === "object") {
+    result.rdp = orderKeys(result.rdp, RDP_ORDER);
   }
   if (answers.removeCredentialsFile) {
     delete result.credentialsFile;
@@ -477,6 +528,8 @@ const SUMMARY_FIELDS = [
   { label: "Fixed IPs", read: c => fixedRanges(c).join(", ") },
   { label: "SSH via IAP", read: c => (tunnelsThroughIap(c) ? "yes" : "no") },
   { label: "SSH key", read: sshKeyFile },
+  { label: "RDP via IAP", read: c => (rdpTunnelsThroughIap(c) ? "yes" : "no") },
+  { label: "RDP user", read: rdpUsername },
   { label: "Credentials file", read: c => asText(c.credentialsFile) }
 ];
 //
@@ -513,6 +566,7 @@ module.exports = {
   validateBucketList,
   validateCidrList,
   validateKeyFile,
+  validateRdpUsername,
   isNameTaken,
   findName,
   asText,
@@ -521,6 +575,8 @@ module.exports = {
   fixedRanges,
   tunnelsThroughIap,
   sshKeyFile,
+  rdpTunnelsThroughIap,
+  rdpUsername,
   buildConfiguration,
   findIdentityConflicts,
   siblingAuthDefaults,

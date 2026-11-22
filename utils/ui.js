@@ -155,6 +155,15 @@ function formatDaysAgo(isoString) {
 }
 //
 /**
+ * Formats the guest operating system of a VM, the one place that names it.
+ * @param {string} guestOs - "windows" or "linux", from Compute.detectGuestOs().
+ * @returns {string} "Windows" or "Linux".
+ */
+function formatGuestOs(guestOs) {
+  return guestOs === "windows" ? "Windows" : "Linux";
+}
+//
+/**
  * Formats a section header with brand color.
  * @param {string} title - Section title.
  * @returns {string} Chalk-formatted section header.
@@ -367,6 +376,7 @@ module.exports = {
   formatGray,
   formatDate,
   formatDaysAgo,
+  formatGuestOs,
   formatSectionHeader,
   showSectionHeader,
   // Operation log.
